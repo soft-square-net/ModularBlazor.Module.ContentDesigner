@@ -1,0 +1,261 @@
+@page "/contentdesigner/studio/{PostId:int}"
+@inherits ContentDesignerPageBase
+@implements IAsyncDisposable
+@using soft.square.net.Share.All
+@inject IStudioPanels Panels
+@inject IPageContext PageContext
+@inject IJSRuntime JS
+
+@*
+  The designer studio of one post: a MudDock workspace whose panes are dock panels (the dock-panel contract), the
+  studio's own and those other modules add for "contentdesigner". The page owns the session (the post, the views as
+  edited, undo, the checks); every pane finds it by the post id the page puts in the page context ("content.post").
+  While the page is open and visible it polls the post's change feed in Content and reloads what the sections change.
+*@
+
+<PageHeader Title="@Title" />
+
+<div class="cd-studio">
+  <div class="cd-studio__bar" role="toolbar" aria-label="Studio">
+    <a class="mud-button-root mud-button-text mud-button-small" href="contentdesigner">← Designs</a>
+    <strong class="cd-studio__title" title="@_session?.Workspace?.Post.PublicId">@Title</strong>
+    @if (_session?.Workspace is { } workspace)
+    {
+      <span class="cd-tag">@workspace.Post.Kind</span>
+      @if (_session.Design?.Published is not null)
+      {
+        <span class="cd-tag cd-tag--ok">published</span>
+      }
+    }
+
+    <span class="cd-views" role="tablist" aria-label="Views">
+      @foreach (var view in Views.All)
+      {
+        var inherits = _session?.Views?[view].InheritsFrom;
+        <button type="button" role="tab" aria-selected="@(_session?.View == view)"
+                class="cd-views__tab @(_session?.View == view ? "is-active" : "")" disabled="@(_session?.Views is null)"
+                title="@(inherits is null ? Views.Label(view) : $"{Views.Label(view)} inherits from {Views.Label(inherits)}")"
+                @onclick="() => _session!.SelectView(view)">
+          <span>@Views.Label(view)</span>
+          @if (inherits is not null)
+          {
+            <span class="cd-views__inherits" aria-hidden="true">↰</span>
+          }
+        </button>
+      }
+    </span>
+
+    <label class="cd-check"><input type="checkbox" checked="@(_session?.ShowHidden ?? true)" disabled="@(_session is null)"
+                                   @onchange="e => _session!.SetShowHidden(e.Value is true)" /> Hidden</label>
+    <select class="cd-select" aria-label="Direction" disabled="@(_session is null)" value="@(_session?.Direction ?? "")"
+            @onchange="e => _session!.SetDirection(e.Value as string is { Length: > 0 } d ? d : null)">
+      <option value="">Post's direction</option>
+      <option value="ltr">LTR</option>
+      <option value="rtl">RTL</option>
+    </select>
+    <input class="cd-input cd-input--short" aria-label="Culture" placeholder="culture" value="@_session?.Culture"
+           disabled="@(_session is null)" @onchange="e => _session!.SetCultureAsync(e.Value as string)" />
+
+    <span class="cd-studio__spacer"></span>
+
+    <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Undo (Ctrl+Z)"
+            disabled="@(_session?.CanUndo != true)" @onclick="() => _session!.Undo()">Undo</button>
+    <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Redo (Ctrl+Y)"
+            disabled="@(_session?.CanRedo != true)" @onclick="() => _session!.Redo()">Redo</button>
+    <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Back to the saved design"
+            disabled="@(_session?.Dirty != true)" @onclick="() => _session!.Revert()">Revert</button>
+    <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+            disabled="@(_session?.Views is null || _session.Checking)" @onclick="() => _session!.CheckAsync()">Check</button>
+    <button type="button" class="mud-button-root mud-button-filled mud-button-primary mud-button-small"
+            disabled="@(_session?.Dirty != true || _session.Busy)" @onclick="() => _session!.SaveAsync()">
+      <span>Save</span>
+      @if (_session?.Dirty == true)
+      {
+        <span class="cd-dirty" title="Unsaved changes">●</span>
+      }
+    </button>
+    @if (_session?.Design?.Published is null)
+    {
+      <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+              disabled="@(_session?.Design is null || _session.Busy)" @onclick="() => _session!.PublishAsync()">Publish</button>
+    }
+    else
+    {
+      <button type="button" class="mud-button-root mud-button-outlined mud-button-small"
+              disabled="@_session.Busy" @onclick="() => _session!.PublishAsync()">Publish again</button>
+      <button type="button" class="mud-button-root mud-button-text mud-button-small"
+              disabled="@_session.Busy" @onclick="() => _session!.UnpublishAsync()">Unpublish</button>
+    }
+    <button type="button" class="mud-button-root mud-button-text mud-button-small" title="The panes back where they started"
+            disabled="@(_dock is null)" @onclick="ResetLayoutAsync">Reset layout</button>
+  </div>
+
+  @if (_session?.Error is { } error && _session.Views is null)
+  {
+    <p class="cd-error" role="alert">@error</p>
+  }
+  else if (_noPanels)
+  {
+    <p class="cd-error" role="alert">The studio's panes are not in your catalog. Ask an administrator to update the ContentDesigner module.</p>
+  }
+  <div class="cd-studio__dock" @ref="_host"></div>
+</div>
+
+@code {
+  private const string LayoutKey = "contentdesigner.studio.layout.v1";
+  private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(4);
+
+  [Parameter] public int PostId { get; set; }
+
+  private StudioSession? _session;
+  private ElementReference _host;
+  private IJSObjectReference? _dock;
+  private string _dockPanels = "";
+  private bool _noPanels;
+  private CancellationTokenSource? _poll;
+  private int _openedFor;
+
+  private string Title => _session?.Workspace?.Post.Title is { Length: > 0 } title ? title : $"Post {PostId}";
+
+  protected override async Task OnParametersSetAsync()
+  {
+    if (_openedFor == PostId) return;
+    _openedFor = PostId;
+    await CloseAsync();
+
+    _session = new StudioSession(PostId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind));
+    _session.Changed += OnSessionChanged;
+    StudioSessions.Add(_session);
+    PageContext.Set(StudioKeys.Post, PostId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    if (await _session.OpenAsync())
+    {
+      _poll = new CancellationTokenSource();
+      _ = PollAsync(_session, _poll.Token);
+    }
+  }
+
+  protected override void OnInitialized() => Panels.Changed += OnPanelsChanged;
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (firstRender) await MountDockAsync();
+  }
+
+  private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+  private void OnPanelsChanged() => InvokeAsync(MountDockAsync);
+
+  // ───────────── the dock ─────────────
+
+  /// <summary>Creates the dock with every panel for the studio; again when the list changed (a module came or went).</summary>
+  private async Task MountDockAsync()
+  {
+    var panels = Panels.For(StudioKeys.Studio, [StudioKeys.Post]);
+    var ids = string.Join('|', panels.Select(p => p.Id));
+    _noPanels = panels.Count == 0;
+    if (ids == _dockPanels && _dock is not null) return;
+    _dockPanels = ids;
+
+    await MudTailInterop.DisposeHandleAsync(_dock);
+    _dock = null;
+    if (panels.Count == 0)
+    {
+      StateHasChanged();
+      return;
+    }
+
+    var definitions = panels.Select(p => new
+    {
+      key = p.Id,
+      title = p.LocalTitle,
+      icon = "", // MudDock takes an icon as markup; a contribution names a Lucide icon, which the dock cannot draw
+      document = p.Document,
+      component = StudioPanels.RootComponent,
+    }).ToList();
+    _dock = await MudTail.CreateAsync("dock", _host, new { storageKey = LayoutKey, layout = DefaultLayout(panels), definitions });
+    StateHasChanged();
+  }
+
+  /// <summary>
+  /// The first arrangement: contents and structure on the left; the designer and output in the centre over problems and
+  /// activity; properties, templates and JSON-LD on the right. Other modules' panels join the area they asked for.
+  /// </summary>
+  private static object DefaultLayout(IReadOnlyList<ShellContribution> panels)
+  {
+    object Group(IEnumerable<ShellContribution> items, double weight) =>
+      new { type = "group", weight, panels = items.Select(p => new { key = p.Id, title = p.LocalTitle }).ToList() };
+
+    var documents = panels.Where(p => p.Document).ToList();
+    var tools = panels.Where(p => !p.Document).ToList();
+    var left = tools.Where(p => p.Area == DockPanelAreas.Left).ToList();
+    var bottom = tools.Where(p => p.Area == DockPanelAreas.Bottom).ToList();
+    var right = tools.Except(left).Except(bottom).ToList();
+
+    var centre = new List<object>();
+    if (documents.Count > 0) centre.Add(Group(documents, 3));
+    if (bottom.Count > 0) centre.Add(Group(bottom, 1));
+
+    var row = new List<object>();
+    if (left.Count > 0) row.Add(Group(left, 1));
+    if (centre.Count > 0) row.Add(new { type = "split", direction = "column", weight = 3.2, children = centre });
+    if (right.Count > 0) row.Add(Group(right, 1.2));
+
+    return new { version = 1, root = new { type = "split", direction = "row", weight = 1, children = row }, left = Array.Empty<object>(), right = Array.Empty<object>() };
+  }
+
+  private async Task ResetLayoutAsync()
+  {
+    if (_dock is null) return;
+    try { await _dock.InvokeVoidAsync("resetLayout"); }
+    catch (JSException) { }
+  }
+
+  // ───────────── hot reload ─────────────
+
+  /// <summary>Reads the post's change feed every few seconds while the page is visible.</summary>
+  private async Task PollAsync(StudioSession session, CancellationToken ct)
+  {
+    using var timer = new PeriodicTimer(PollEvery);
+    try
+    {
+      while (await timer.WaitForNextTickAsync(ct))
+      {
+        if (await HiddenAsync()) continue;
+        try { await session.PollAsync(ct); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception) { /* the next tick tries again; the session shows its error */ }
+      }
+    }
+    catch (OperationCanceledException) { }
+  }
+
+  private async Task<bool> HiddenAsync()
+  {
+    try { return await JS.GetValueAsync<bool>("document.hidden"); }
+    catch (JSException) { return false; }
+  }
+
+  // ───────────── closing ─────────────
+
+  private async Task CloseAsync()
+  {
+    _poll?.Cancel();
+    _poll?.Dispose();
+    _poll = null;
+    if (_session is null) return;
+    _session.Changed -= OnSessionChanged;
+    StudioSessions.Remove(_session);
+    _session = null;
+    await Task.CompletedTask;
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    Panels.Changed -= OnPanelsChanged;
+    await CloseAsync();
+    PageContext.Clear(StudioKeys.Post);
+    await MudTailInterop.DisposeHandleAsync(_dock);
+    _dock = null;
+  }
+}

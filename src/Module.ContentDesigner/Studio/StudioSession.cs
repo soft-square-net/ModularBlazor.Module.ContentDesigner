@@ -1,0 +1,375 @@
+using soft.square.net.ContentDesigner.Rendering.Model;
+using soft.square.net.WebApi.Modules.ContentDesigner.Client;
+using RenderDocument = soft.square.net.ContentDesigner.Rendering.Model.RenderDocument;
+
+namespace soft.square.net.Module.ContentDesigner.Studio;
+
+/// <summary>
+/// One open post in the studio: what the page and every panel share (the panels are separate Blazor root components,
+/// mounted by the host's mb-module-panel, so they find the session through <see cref="StudioSessions"/>). It holds the
+/// workspace, the unsaved views with undo, the current view and selection, the last check and the change feed, and
+/// raises <see cref="Changed"/> after every change. Calls to the API go through <see cref="RunAsync"/>.
+/// </summary>
+public sealed class StudioSession
+{
+    private const int UndoDepth = 50;
+    private const int ActivityKept = 100;
+
+    private readonly Func<ContentDesignerClient> _api;
+    private readonly Func<Exception, string> _describe;
+    private readonly Func<string, string, ValueTask> _toast;
+    private readonly Stack<DViews> _undo = new();
+    private readonly Stack<DViews> _redo = new();
+    private int _busy;
+
+    public StudioSession(int postId, Func<ContentDesignerClient> api, Func<Exception, string> describe, Func<string, string, ValueTask> toast)
+    {
+        PostId = postId;
+        _api = api;
+        _describe = describe;
+        _toast = toast;
+    }
+
+    public int PostId { get; }
+
+    public WorkspaceDto? Workspace { get; private set; }
+    public RenderDocument? Document { get; private set; }
+    public PostDesignDto? Design { get; private set; }
+    public IReadOnlyDictionary<int, RenderBlockTemplate> BlockTemplates { get; private set; } = new Dictionary<int, RenderBlockTemplate>();
+    public IReadOnlyList<DocumentTemplateDto> Templates { get; private set; } = [];
+
+    /// <summary>The views as edited; <see cref="Saved"/> as last read or saved.</summary>
+    public DViews? Views { get; private set; }
+    public DViews? Saved { get; private set; }
+    public bool Dirty => Views is not null && !ReferenceEquals(Views, Saved);
+
+    public string View { get; private set; } = Studio.Views.Mobile;
+    public string? Selected { get; private set; }
+    public string? Culture { get; private set; }
+    public string? Direction { get; private set; }
+    public bool ShowHidden { get; private set; } = true;
+
+    public DesignReport? Report { get; private set; }
+    public bool Checking { get; private set; }
+
+    /// <summary>The post's change feed, newest first, and the last event id read.</summary>
+    public List<FeedEvent> Activity { get; } = [];
+    public long LastEvent { get; private set; }
+
+    /// <summary>Content ids that changed in the last reload, for the canvas and the tray to flash.</summary>
+    public IReadOnlySet<string> ChangedContents { get; private set; } = new HashSet<string>();
+
+    public bool Busy => _busy > 0;
+    public string? Error { get; private set; }
+    public bool CanUndo => _undo.Count > 0;
+    public bool CanRedo => _redo.Count > 0;
+
+    /// <summary>The current view's design as it shows (its own, or the one it inherits).</summary>
+    public DView? Current => Views is null ? null : DesignEditor.Resolve(Views, View);
+
+    public string? InheritsFrom => Views?[View].InheritsFrom;
+
+    public event Action? Changed;
+
+    public void Notify() => Changed?.Invoke();
+
+    // ───────────── loading ─────────────
+
+    /// <summary>Opens the post: its workspace, a design (made from the kind's default when it has none), the templates.</summary>
+    public Task<bool> OpenAsync() => RunAsync(async api =>
+    {
+        var workspace = await api.GetWorkspaceAsync(PostId, Culture);
+        var design = workspace.Design ?? await api.OpenDesignAsync(PostId, new OpenRequest());
+        Accept(workspace);
+        TakeDesign(design, clearHistory: true);
+
+        var templates = await api.ListBlockTemplatesAsync();
+        BlockTemplates = templates.ToDictionary(t => t.Id, t => new RenderBlockTemplate(t.PartOrder, t.HiddenParts,
+            t.Tokens is null ? null : new Dictionary<string, string>(t.Tokens)));
+        Templates = await api.ListDocumentTemplatesAsync(workspace.Post.Kind);
+
+        // Start the feed at its end: the studio shows what happens from now on.
+        var page = await api.GetPostEventsAsync(PostId, 0);
+        while (page.More) page = await api.GetPostEventsAsync(PostId, page.Last);
+        LastEvent = page.Last;
+        Activity.Clear();
+        Activity.AddRange(page.Events.Reverse().Take(20));
+    });
+
+    /// <summary>The post again (after a change in Content), keeping the design, the edits and the selection.</summary>
+    public Task<bool> ReloadPostAsync(IReadOnlySet<string>? changed = null) => RunAsync(async api =>
+    {
+        Accept(await api.GetWorkspaceAsync(PostId, Culture));
+        ChangedContents = changed ?? new HashSet<string>();
+    }, toast: false);
+
+    private void Accept(WorkspaceDto workspace)
+    {
+        Workspace = workspace;
+        Document = StudioJson.Convert<RenderDocument>(workspace.Document);
+        Direction ??= Document.Direction;
+        Culture ??= Document.Culture;
+    }
+
+    internal void TakeDesign(PostDesignDto design, bool clearHistory)
+    {
+        if (Views is not null && !clearHistory) Push(Views);
+        Design = design;
+        Views = Saved = StudioJson.From(design.Draft);
+        if (clearHistory) { _undo.Clear(); _redo.Clear(); }
+        if (Selected is not null && Current is { } current && !DesignEditor.Exists(current, Selected)) Selected = null;
+    }
+
+    // ───────────── editing ─────────────
+
+    /// <summary>Applies an edit to the views (undoable); a refused edit shows its reason and changes nothing.</summary>
+    public bool Edit(Func<DViews, DViews> edit, string? select = null)
+    {
+        if (Views is null) return false;
+        DViews next;
+        try { next = edit(Views); }
+        catch (EditException e)
+        {
+            _ = _toast(e.Message, "warning");
+            return false;
+        }
+        if (ReferenceEquals(next, Views)) return false;
+        Push(Views);
+        _redo.Clear();
+        Views = next;
+        if (select is not null) Selected = select;
+        Notify();
+        return true;
+    }
+
+    private void Push(DViews views)
+    {
+        _undo.Push(views);
+        if (_undo.Count > UndoDepth)
+        {
+            var keep = _undo.Take(UndoDepth).Reverse().ToList();
+            _undo.Clear();
+            foreach (var v in keep) _undo.Push(v);
+        }
+    }
+
+    public void Undo()
+    {
+        if (Views is null || _undo.Count == 0) return;
+        _redo.Push(Views);
+        Views = _undo.Pop();
+        Notify();
+    }
+
+    public void Redo()
+    {
+        if (Views is null || _redo.Count == 0) return;
+        _undo.Push(Views);
+        Views = _redo.Pop();
+        Notify();
+    }
+
+    /// <summary>Drops the unsaved edits.</summary>
+    public void Revert()
+    {
+        if (!Dirty || Saved is null) return;
+        Push(Views!);
+        Views = Saved;
+        Notify();
+    }
+
+    public void SelectView(string view)
+    {
+        if (View == view) return;
+        View = view;
+        Notify();
+    }
+
+    public void Select(string? id)
+    {
+        if (Selected == id) return;
+        Selected = id;
+        Notify();
+    }
+
+    public void SetShowHidden(bool show)
+    {
+        ShowHidden = show;
+        Notify();
+    }
+
+    public void SetDirection(string? direction)
+    {
+        Direction = direction;
+        Notify();
+    }
+
+    /// <summary>Reads the post in another language (its translation overlay, when Content serves one).</summary>
+    public async Task SetCultureAsync(string? culture)
+    {
+        Culture = string.IsNullOrWhiteSpace(culture) ? null : culture.Trim();
+        Direction = null;
+        await ReloadPostAsync();
+        Direction ??= Document?.Direction;
+        Notify();
+    }
+
+    // ───────────── saving and the API ─────────────
+
+    public Task<bool> SaveAsync() => RunAsync(async api =>
+    {
+        if (!Dirty || Design is null || Views is null) return;
+        var edited = Views;
+        var saved = await api.SaveDesignAsync(PostId, new SaveRequest { Version = Design.Version, Views = StudioJson.ToApi(edited) });
+        Design = saved;
+        Views = Saved = edited; // keep the instance: the canvas and the undo stack refer to it
+        await _toast("Design saved.", "success");
+    });
+
+    /// <summary>Saves first when there are unsaved edits (template and publish actions work on the stored draft).</summary>
+    private async Task<bool> SavedFirstAsync() => !Dirty || await SaveAsync();
+
+    /// <summary>The checks (and the JSON-LD) of the views as edited, without saving them.</summary>
+    public async Task<bool> CheckAsync()
+    {
+        if (Views is null) return false;
+        Checking = true;
+        Notify();
+        try
+        {
+            return await RunAsync(async api =>
+                Report = await api.CheckDesignAsync(PostId, new CheckRequest { Design = StudioJson.ToApi(Views), Culture = Culture }), toast: false);
+        }
+        finally
+        {
+            Checking = false;
+            Notify();
+        }
+    }
+
+    public async Task<PreviewDto?> PreviewAsync(bool amp)
+    {
+        PreviewDto? result = null;
+        if (Views is null) return null;
+        await RunAsync(async api => result = await api.PreviewDesignAsync(PostId,
+            new PreviewRequest { Amp = amp, Culture = Culture, Views = StudioJson.ToApi(Views) }), toast: false);
+        return result;
+    }
+
+    /// <summary>Takes a document template's views: all of them, or only the current view's.</summary>
+    public async Task<bool> ApplyTemplateAsync(int templateId, bool currentViewOnly)
+    {
+        if (!await SavedFirstAsync()) return false;
+        return await RunAsync(async api =>
+        {
+            var design = await api.ApplyTemplateAsync(PostId, new ApplyRequest
+            {
+                Version = Design!.Version,
+                TemplateId = templateId,
+                Views = currentViewOnly ? [Studio.Views.Kind(View)] : null
+            });
+            TakeDesign(design, clearHistory: false);
+            await _toast("Template applied.", "success");
+        });
+    }
+
+    public async Task<bool> SaveAsTemplateAsync(string name, string? description, bool makeDefault)
+    {
+        if (!await SavedFirstAsync()) return false;
+        return await RunAsync(async api =>
+        {
+            await api.SaveDesignAsTemplateAsync(PostId, new SaveAsTemplateRequest { Name = name, Description = description, MakeDefault = makeDefault });
+            Templates = await api.ListDocumentTemplatesAsync(Workspace!.Post.Kind);
+            await _toast($"Saved as the template \"{name}\".", "success");
+        });
+    }
+
+    public Task<bool> SetDefaultAsync(int templateId, bool isDefault) => RunAsync(async api =>
+    {
+        await api.SetDefaultTemplateAsync(templateId, new DefaultRequest { IsDefault = isDefault });
+        Templates = await api.ListDocumentTemplatesAsync(Workspace!.Post.Kind);
+    });
+
+    public async Task<bool> PublishAsync()
+    {
+        if (!await SavedFirstAsync()) return false;
+        return await RunAsync(async api =>
+        {
+            Design = await api.PublishDesignAsync(PostId, new PublishRequest { Version = Design!.Version, Culture = Culture });
+            await _toast("Design published.", "success");
+        });
+    }
+
+    public async Task<bool> UnpublishAsync()
+    {
+        if (!await SavedFirstAsync()) return false;
+        return await RunAsync(async api =>
+        {
+            Design = await api.UnpublishDesignAsync(PostId, new UnpublishRequest { Version = Design!.Version });
+            await _toast("The published design is down.", "success");
+        });
+    }
+
+    // ───────────── hot reload ─────────────
+
+    /// <summary>
+    /// Reads the post's change feed since the last event. When contents or the post changed, reloads the post (the design,
+    /// the edits and the selection stay) and checks again. Returns whether anything changed.
+    /// </summary>
+    public async Task<bool> PollAsync(CancellationToken ct)
+    {
+        if (Workspace is null) return false;
+        FeedPage page;
+        var events = new List<FeedEvent>();
+        try
+        {
+            var after = LastEvent;
+            do
+            {
+                page = await _api().GetPostEventsAsync(PostId, after, ct);
+                events.AddRange(page.Events);
+                after = page.Last;
+            } while (page.More && !ct.IsCancellationRequested);
+            LastEvent = after;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return false; // the next tick tries again; the toolbar shows nothing for a missed poll
+        }
+        if (events.Count == 0) return false;
+
+        Activity.InsertRange(0, events.AsEnumerable().Reverse());
+        if (Activity.Count > ActivityKept) Activity.RemoveRange(ActivityKept, Activity.Count - ActivityKept);
+        var changed = events.Select(e => e.ContentId).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        await ReloadPostAsync(changed);
+        Notify();
+        if (Report is not null) await CheckAsync();
+        return true;
+    }
+
+    // ───────────── calls ─────────────
+
+    /// <summary>Runs API calls: busy state, a readable error (toast unless asked not to), and <see cref="Changed"/>.</summary>
+    public async Task<bool> RunAsync(Func<ContentDesignerClient, Task> call, bool toast = true)
+    {
+        Interlocked.Increment(ref _busy);
+        Error = null;
+        Notify();
+        try
+        {
+            await call(_api());
+            return true;
+        }
+        catch (Exception e)
+        {
+            Error = _describe(e);
+            if (toast) await _toast(Error, "error");
+            return false;
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _busy);
+            Notify();
+        }
+    }
+}

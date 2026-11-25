@@ -1,0 +1,35 @@
+@inherits StudioPanelBase
+@*
+  The post's change feed (Content's, polled every few seconds while the studio is open and visible): what the sections
+  and the Desk did to its contents. Each change reloads the post in the studio; the arrangement and the selection stay.
+*@
+
+<div class="cd-panel cd-activity">
+  @if (Session is null)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else if (Session.Activity.Count == 0)
+  {
+    <p class="cd-empty">Nothing yet. Changes the sections make to this post's contents show here, and in the canvas.</p>
+  }
+  else
+  {
+    <ul class="cd-list">
+      @foreach (var e in Session.Activity)
+      {
+        <li class="cd-list__item" @onclick="() => Open(e)">
+          <span class="cd-muted cd-time">@StudioText.When(e.At)</span>
+          <span class="cd-list__title">@StudioText.Event(Session, e)</span>
+        </li>
+      }
+    </ul>
+  }
+</div>
+
+@code {
+  private void Open(FeedEvent e)
+  {
+    if (e.ContentId is { } id) Session?.Select("content:" + id);
+  }
+}

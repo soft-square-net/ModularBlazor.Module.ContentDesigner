@@ -2,12 +2,14 @@
   <Sdk Name="soft.square.net.ModularBlazor.Module.Sdk" />
 
   <!--
-    The Blazor client module of ContentDesigner, loaded by ModularBlazor.BlzWebClient: for now a read-only Designs page (the
-    post designs and the document templates) over the module's API; the designer studio comes next.
+    The Blazor client module of ContentDesigner, loaded by ModularBlazor.BlzWebClient: the Designs page and the studio
+    (/contentdesigner/studio/{postId}), which arranges a post in its four views.
 
-    Shipped as soft.square.net.Module.ContentDesigner.dll alone (the client part of the module). The API client is its own
-    hidden client module (WebApi.Modules.ContentDesigner.Client, listed in Dependencies): referenced here to compile, never
-    copied (Private=false). The host provides ModularBlazor.Abstractions (the Module SDK), Microsoft.Extensions.Http
+    Shipped as a folder (or .zip) of two assemblies: soft.square.net.Module.ContentDesigner.dll (the module, with
+    [ClientModule]) and soft.square.net.ContentDesigner.Rendering.dll, its private assembly (the block renderers the
+    canvas shows, the same the server renders pages with), copied into the output (Private=true). The API client is its
+    own hidden client module (WebApi.Modules.ContentDesigner.Client, listed in Dependencies): referenced here to compile,
+    never copied (Private=false). The host provides ModularBlazor.Abstractions (the Module SDK), Microsoft.Extensions.Http
     and the WebAssembly authentication package.
   -->
 
@@ -15,6 +17,11 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.*" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Authentication" Version="10.0.*" PrivateAssets="all" />
     <ProjectReference Include="..\WebApi.Modules.ContentDesigner.Client\WebApi.Modules.ContentDesigner.Client.csproj" Private="false" />
+    <ProjectReference Include="..\ContentDesigner.Rendering\ContentDesigner.Rendering.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="soft.square.net.Module.ContentDesigner.Tests" />
   </ItemGroup>
 
 </Project>

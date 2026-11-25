@@ -1,0 +1,208 @@
+@inherits StudioPanelBase
+@*
+  The selection in the current view: where it is (region; a structural change applies to every web view), its order,
+  span and hidden flag and its style tokens (this view only), and "copy to view". With nothing selected: the view
+  itself, inheriting another view or with a design of its own. Only theme tokens: no classes, no CSS.
+*@
+
+<div class="cd-panel cd-properties">
+  @if (Session?.Views is not { } views || Session.Current is not { } design)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else
+  {
+    var view = Session.View;
+    <section class="cd-section">
+      <h3 class="cd-section__title">@Views.Label(view) view</h3>
+      @if (Session.InheritsFrom is { } from)
+      {
+        <p class="cd-muted">Shows the @Views.Label(from) view's design.</p>
+        <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+                @onclick="() => Session.Edit(v => DesignEditor.Detach(v, view))">Give it its own design</button>
+      }
+      else
+      {
+        <div class="cd-row">
+          <label class="cd-label" for="cd-inherit">Inherit from</label>
+          <select id="cd-inherit" class="cd-select" @onchange="e => Inherit(view, e.Value as string)">
+            <option value="">(its own design)</option>
+            @foreach (var other in Views.All.Where(v => v != view))
+            {
+              <option value="@other">@Views.Label(other)</option>
+            }
+          </select>
+        </div>
+      }
+    </section>
+
+    @if (Session.Selected is { } id && DesignEditor.Exists(design, id))
+    {
+      var isRegion = DesignEditor.IsRegion(id);
+      var region = isRegion ? DesignEditor.FindRegion(design, DesignEditor.RegionId(id)) : null;
+      var placement = isRegion ? null : DesignEditor.FindPlacement(design, id);
+      var tokens = (region?.Tokens ?? placement?.Tokens) ?? new Dictionary<string, string>();
+      var hidden = region?.Hidden ?? placement!.Hidden;
+      var span = region?.Span ?? placement?.Span;
+
+      <section class="cd-section">
+        <h3 class="cd-section__title">@Title(id)</h3>
+        @if (isRegion)
+        {
+          <p class="cd-muted">@region!.Kind @(region.ParentId is null ? "at the top" : $"in {region.ParentId}")</p>
+        }
+        else
+        {
+          <div class="cd-row">
+            <label class="cd-label" for="cd-region">Region</label>
+            <select id="cd-region" class="cd-select" value="@placement!.RegionId" @onchange="e => Place(id, e.Value as string)">
+              @foreach (var r in design.AllRegions)
+              {
+                <option value="@r.Id">@r.Kind · @r.Id</option>
+              }
+            </select>
+          </div>
+          @if (Views.IsWeb(view))
+          {
+            <p class="cd-hint">Mobile, Tablet and Desktop share one structure: moving it moves it in all three.</p>
+          }
+        }
+
+        <div class="cd-row">
+          <span class="cd-label">Order</span>
+          <span class="cd-buttons">
+            <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Earlier"
+                    @onclick="() => Session.Edit(v => DesignEditor.Move(v, view, id, -1))">↑ Earlier</button>
+            <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Later"
+                    @onclick="() => Session.Edit(v => DesignEditor.Move(v, view, id, 1))">↓ Later</button>
+          </span>
+        </div>
+
+        <div class="cd-row">
+          <label class="cd-label" for="cd-span">Span</label>
+          <select id="cd-span" class="cd-select" value="@(span ?? "")" @onchange="e => Session.Edit(v => DesignEditor.SetSpan(v, view, id, Empty(e.Value as string)))">
+            <option value="">(auto)</option>
+            @foreach (var s in Tokens.Spans)
+            {
+              <option value="@s">@(s == "full" ? "full width" : $"{s} of 12")</option>
+            }
+          </select>
+        </div>
+
+        <div class="cd-row">
+          <label class="cd-check">
+            <input type="checkbox" checked="@hidden" @onchange="e => Session.Edit(v => DesignEditor.SetHidden(v, view, id, e.Value is true))" />
+            Hidden in this view
+          </label>
+        </div>
+      </section>
+
+      <section class="cd-section">
+        <h3 class="cd-section__title">Style tokens <span class="cd-muted">(@Views.Label(view))</span></h3>
+        @foreach (var (token, values) in TokensFor(id))
+        {
+          var current = tokens.GetValueOrDefault(token);
+          <div class="cd-row">
+            <label class="cd-label" for="@($"cd-token-{token}")">@token</label>
+            <select id="@($"cd-token-{token}")" class="cd-select" value="@(current ?? "")"
+                    @onchange="e => Session.Edit(v => DesignEditor.SetToken(v, view, id, token, Empty(e.Value as string)))">
+              <option value="">(default)</option>
+              @foreach (var value in values)
+              {
+                <option value="@value">@value</option>
+              }
+            </select>
+          </div>
+        }
+      </section>
+
+      <section class="cd-section">
+        <h3 class="cd-section__title">Copy to view</h3>
+        <p class="cd-hint">Order, span, hidden and tokens of this @(isRegion ? "region" : "part"), from the @Views.Label(view) view.</p>
+        <span class="cd-buttons">
+          @foreach (var other in Views.All.Where(v => v != view))
+          {
+            <button type="button" class="mud-button-root mud-button-outlined mud-button-small"
+                    @onclick="() => Session.Edit(v => DesignEditor.CopyTo(v, view, other, id))">@Views.Label(other)</button>
+          }
+        </span>
+      </section>
+
+      <section class="cd-section">
+        @if (isRegion)
+        {
+          <button type="button" class="mud-button-root mud-button-text mud-button-error mud-button-small"
+                  @onclick="() => Remove(id)">Remove the region</button>
+        }
+        else
+        {
+          <button type="button" class="mud-button-root mud-button-text mud-button-error mud-button-small"
+                  @onclick="() => Remove(id)">Take it out of the views</button>
+        }
+      </section>
+    }
+    else if (Session.Selected is { } missing)
+    {
+      <section class="cd-section">
+        <h3 class="cd-section__title">@Title(missing)</h3>
+        <p class="cd-muted">Not placed in the @Views.Label(view) view@(missing.StartsWith("content:") ? "; it shows through \"items\" if that is placed" : "").</p>
+        @if (DesignEditor.IsPart(missing) && design.AllRegions.Count > 0)
+        {
+          <div class="cd-row">
+            <label class="cd-label" for="cd-place">Place in</label>
+            <select id="cd-place" class="cd-select" @onchange="e => Place(missing, e.Value as string)">
+              <option value="">(choose a region)</option>
+              @foreach (var r in design.AllRegions)
+              {
+                <option value="@r.Id">@r.Kind · @r.Id</option>
+              }
+            </select>
+          </div>
+        }
+      </section>
+    }
+    else
+    {
+      <p class="cd-empty">Select a block, a value or a region on the canvas, in Structure or in Contents.</p>
+    }
+  }
+</div>
+
+@code {
+  private static string? Empty(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+  private string Title(string id) => StudioText.Title(Session!, id);
+
+  private void Inherit(string view, string? from)
+  {
+    if (string.IsNullOrEmpty(from)) return;
+    Session!.Edit(v => DesignEditor.Inherit(v, view, from));
+  }
+
+  private void Place(string part, string? regionId)
+  {
+    if (string.IsNullOrEmpty(regionId)) return;
+    var view = Session!.View;
+    Session.Edit(v => DesignEditor.Place(v, view, part, regionId), part);
+  }
+
+  private void Remove(string id)
+  {
+    var view = Session!.View;
+    if (Session.Edit(v => DesignEditor.IsRegion(id) ? DesignEditor.RemoveRegion(v, view, DesignEditor.RegionId(id)) : DesignEditor.Unplace(v, view, id)))
+      Session.Select(null);
+  }
+
+  /// <summary>The tokens offered: a region's layout tokens; a content's field styles (DynamicFields); the rest for values.</summary>
+  private IEnumerable<(string Token, IReadOnlyList<string> Values)> TokensFor(string id)
+  {
+    if (DesignEditor.IsRegion(id)) return Tokens.ForRegion.Select(t => (t, Tokens.Values[t]));
+    if (id.StartsWith("content:", StringComparison.Ordinal)
+        && Session!.Workspace!.Contents.FirstOrDefault(c => c.ContentId == id["content:".Length..]) is { } content
+        && Session.Workspace.FieldStyles.TryGetValue(content.FieldKey, out var styles))
+      return styles.Where(s => Tokens.Values.ContainsKey(s.Key))
+        .Select(s => (s.Key, (IReadOnlyList<string>)[.. s.Value.Where(v => Tokens.IsKnown(s.Key, v))]));
+    string[] keys = id == "items" ? ["width", "spacing"] : ["align", "size", "tone", "spacing", "width", "level"];
+    return keys.Select(t => (t, Tokens.Values[t]));
+  }
+}

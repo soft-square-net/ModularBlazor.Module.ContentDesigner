@@ -41,7 +41,8 @@
     <AssemblyMetadata Include="ModuleOutput" Value="$([System.IO.Path]::GetFullPath('$(ModuleOutput)'))" />
     <AssemblyMetadata Include="ModulePackage" Value="$([System.IO.Path]::GetFullPath('$(ModulePackage)'))" />
     <AssemblyMetadata Include="ApiClientOutput" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\WebApi.Modules.ContentDesigner.Client\bin\$(Configuration)\net10.0\soft.square.net.WebApi.Modules.ContentDesigner.Client.dll'))" />
-    <AssemblyMetadata Include="UiOutput" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\Module.ContentDesigner\bin\$(Configuration)\net10.0\soft.square.net.Module.ContentDesigner.dll'))" />
+    <!-- The UI is a folder: the module and its private assembly (ContentDesigner.Rendering), installed as one module. -->
+    <AssemblyMetadata Include="UiOutput" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\src\Module.ContentDesigner\bin\$(Configuration)\net10.0\'))" />
     <AssemblyMetadata Include="RepoRoot" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..'))" />
     <AssemblyMetadata Include="PlaygroundData" Value="$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory).data'))" />
   </ItemGroup>
@@ -53,15 +54,19 @@
 
   <!-- After every build, the module's parts ready to upload (install loop; the dev loop loads them directly):
          out/contentdesigner.zip    server part, for the Host Modules page
-         out/client/*.dll      client parts, for the Client Modules page: the API client (hidden) first, then the UI -->
+         out/client/            client parts, for the Client Modules page: the API client (hidden, a .dll) first, then the
+                                UI (Module.ContentDesigner.zip: the module and its private ContentDesigner.Rendering.dll) -->
   <Target Name="PackModuleForUpload" AfterTargets="Build">
     <ItemGroup>
       <_ClientPart Include="$(MSBuildThisFileDirectory)..\src\WebApi.Modules.ContentDesigner.Client\bin\$(Configuration)\net10.0\soft.square.net.WebApi.Modules.ContentDesigner.Client.dll" />
-      <_ClientPart Include="$(MSBuildThisFileDirectory)..\src\Module.ContentDesigner\bin\$(Configuration)\net10.0\soft.square.net.Module.ContentDesigner.dll" />
+      <_UiPart Include="$(MSBuildThisFileDirectory)..\src\Module.ContentDesigner\bin\$(Configuration)\net10.0\*.dll" />
     </ItemGroup>
     <MakeDir Directories="$(MSBuildThisFileDirectory)out\client" />
     <ZipDirectory SourceDirectory="$(ModuleOutput)" DestinationFile="$(ModulePackage)" Overwrite="true" />
     <Copy SourceFiles="@(_ClientPart)" DestinationFolder="$(MSBuildThisFileDirectory)out\client" SkipUnchangedFiles="true" />
+    <RemoveDir Directories="$(MSBuildThisFileDirectory)out\ui" />
+    <Copy SourceFiles="@(_UiPart)" DestinationFolder="$(MSBuildThisFileDirectory)out\ui" />
+    <ZipDirectory SourceDirectory="$(MSBuildThisFileDirectory)out\ui" DestinationFile="$(MSBuildThisFileDirectory)out\client\Module.ContentDesigner.zip" Overwrite="true" />
     <Message Importance="high" Text="Module parts for upload: $([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)out'))" />
   </Target>
 

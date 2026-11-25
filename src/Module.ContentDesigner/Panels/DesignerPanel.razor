@@ -1,0 +1,148 @@
+@inherits StudioPanelBase
+@implements IAsyncDisposable
+@inject MudTailRuntime MudTail
+@inject IHttpClientFactory HttpClients
+@*
+  The design surface: MudCanvas (pack "designer", with the "editorial" token styles) decorating this Blazor markup
+  (adopt mode). The page inside is ContentDesigner.Rendering's DesignBody, the same components the server renders, so
+  the canvas shows the post as published, live. The web views share one responsive page and the device frame's width
+  picks the breakpoint (container queries); the AMP tab shows the AMP view's own arrangement.
+
+  Gestures: a click selects; Alt+↑/↓ reorders in the current view; Delete takes a part out of the views (an empty region
+  is removed); the bottom-right handle sets the span; Ctrl+Z / Ctrl+Y undo and redo. Drag and drop comes in phase 7.
+*@
+
+<div class="cd-designer">
+  @if (Session is null || Session.Document is null || Session.Views is null)
+  {
+    <p class="cd-empty" role="status">@(Session?.Error ?? "Opening the post…")</p>
+  }
+  else if (Session.InheritsFrom is { } from)
+  {
+    <p class="cd-banner" role="note">
+      The @Views.Label(Session.View) view shows the @Views.Label(from) view's design. An edit here gives it its own copy.
+    </p>
+  }
+  <div class="mud-canvas cd-canvas" @ref="_host">
+    <div class="mud-canvas__viewport">
+      <div class="mud-canvas__frame">
+        <div class="mud-canvas__content">
+          @if (_page is not null)
+          {
+            <DesignBody Page="_page" Settings="_settings" />
+          }
+        </div>
+      </div>
+      <div class="mud-canvas__overlay"></div>
+    </div>
+  </div>
+</div>
+
+@code {
+  private ElementReference _host;
+  private IJSObjectReference? _canvas;
+  private DotNetObjectReference<DesignerPanel>? _self;
+  private bool _creating;
+  private PageModel? _page;
+  private RenderSettings _settings = new();
+
+  // What the page was built from, to build it again only when one of them changes.
+  private (DViews? Views, RenderDocument? Document, bool Web, IReadOnlyDictionary<int, RenderBlockTemplate>? Templates) _built;
+  // What the canvas was last told.
+  private (string? View, bool ShowHidden, string? Direction, string? Culture, string? Selected) _told;
+
+  protected override void OnInitialized()
+  {
+    base.OnInitialized();
+    // Assets are served by the gateway (the API's origin), not by the client's.
+    var api = HttpClients.CreateClient(HttpClientNames.WebApi).BaseAddress;
+    var template = new RenderSettings().AssetUrlTemplate;
+    if (api is not null) _settings = new RenderSettings { AssetUrlTemplate = new Uri(api, template.TrimStart('/')).ToString().Replace("%7Bid%7D", "{id}") };
+  }
+
+  protected override void OnSessionAttached() => Build();
+
+  protected override void OnSessionChanged() => Build();
+
+  private void Build()
+  {
+    if (Session?.Document is not { } document || Session.Views is not { } views) { _page = null; return; }
+    var web = Views.IsWeb(Session.View);
+    if (ReferenceEquals(_built.Views, views) && ReferenceEquals(_built.Document, document) && _built.Web == web
+        && ReferenceEquals(_built.Templates, Session.BlockTemplates) && _page is not null) return;
+    _built = (views, document, web, Session.BlockTemplates);
+    _page = RenderMapping.Page(document, RenderMapping.Design(views, Session.BlockTemplates), Session.View);
+  }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (Session?.Views is null) return;
+    if (_canvas is null)
+    {
+      if (_creating) return;
+      _creating = true;
+      _self ??= DotNetObjectReference.Create(this);
+      _canvas = await MudTail.CreateAsync("canvas", _host, new
+      {
+        adopt = true,
+        device = Views.Device(Session.View),
+        showHidden = Session.ShowHidden,
+        dir = Session.Direction,
+        lang = Session.Culture,
+        autoDraggable = false,
+      }, _self);
+      _creating = false;
+      _told = (Session.View, Session.ShowHidden, Session.Direction, Session.Culture, null);
+    }
+    if (_canvas is null) return;
+
+    if (_told.View != Session.View) await _canvas.InvokeVoidAsync("setDevice", Views.Device(Session.View));
+    if (_told.ShowHidden != Session.ShowHidden) await _canvas.InvokeVoidAsync("setShowHidden", Session.ShowHidden);
+    if (_told.Direction != Session.Direction || _told.Culture != Session.Culture)
+      await _canvas.InvokeVoidAsync("setDirection", Session.Direction, Session.Culture);
+    if (_told.Selected != Session.Selected) await _canvas.InvokeVoidAsync("select", Session.Selected);
+    await _canvas.InvokeVoidAsync("refresh"); // the blocks may have moved: the selection box follows
+    _told = (Session.View, Session.ShowHidden, Session.Direction, Session.Culture, Session.Selected);
+  }
+
+  /// <summary>MudCanvas's gestures, one call per finished gesture.</summary>
+  [JSInvokable]
+  public Task OnMudEvent(string name, JsonElement payload)
+  {
+    if (Session?.Views is null) return Task.CompletedTask;
+    var id = payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String ? i.GetString() : null;
+    var view = Session.View;
+    switch (name)
+    {
+      case "select":
+        _told = _told with { Selected = id };
+        Session.Select(id);
+        break;
+      case "move" when id is not null && payload.TryGetProperty("by", out var by):
+        Session.Edit(v => DesignEditor.Move(v, view, id, by.GetInt32()), id);
+        break;
+      case "delete" when id is not null:
+        Session.Edit(v => DesignEditor.IsRegion(id)
+          ? DesignEditor.RemoveRegion(v, view, DesignEditor.RegionId(id))
+          : DesignEditor.Unplace(v, view, id));
+        if (Session.Current is { } current && !DesignEditor.Exists(current, id)) Session.Select(null);
+        break;
+      case "resize" when id is not null && payload.TryGetProperty("span", out var span) && span.TryGetInt32(out var columns) && columns > 0:
+        Session.Edit(v => DesignEditor.SetSpan(v, view, id, Math.Min(columns, 12).ToString()), id);
+        break;
+      case "command" when payload.TryGetProperty("name", out var command):
+        if (command.GetString() == "undo") Session.Undo();
+        else if (command.GetString() == "redo") Session.Redo();
+        break;
+    }
+    return Task.CompletedTask;
+  }
+
+  public async ValueTask DisposeAsync()
+  {
+    Dispose();
+    await MudTailInterop.DisposeHandleAsync(_canvas);
+    _canvas = null;
+    _self?.Dispose();
+  }
+}

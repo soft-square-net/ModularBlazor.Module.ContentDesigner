@@ -1,5 +1,6 @@
 using soft.square.net.WebApi.Modules.ContentDesigner.Core.Designs;
 using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Designs;
+using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Ports;
 
 namespace soft.square.net.WebApi.Modules.ContentDesigner.Web.Designs;
 
@@ -96,16 +97,18 @@ public sealed class ApplyTemplate : IEndpoint
 /// <summary>POST /posts/{postId}/design/check: the Problems panel.</summary>
 public sealed class Check : IEndpoint
 {
-    public sealed record CheckRequest(IReadOnlyList<ViewKind>? Views = null, string? Culture = null);
+    /// <param name="Views">Only these views (all by default).</param>
+    /// <param name="Design">Unsaved views to check instead of the stored draft (the studio, while editing).</param>
+    public sealed record CheckRequest(IReadOnlyList<ViewKind>? Views = null, string? Culture = null, DesignViews? Design = null);
 
     public static RouteHandlerBuilder Map(IEndpointRouteBuilder app) =>
         app.MapPost("/posts/{postId:int}/design/check", HandleAsync)
             .RequirePermission(ContentDesignerPermissions.Read)
             .WithName("ContentDesigner_CheckDesign")
-            .WithSummary("Check the draft: design rules, DynamicFields validation, JSON-LD essentials, the AMP page.");
+            .WithSummary("Check the draft (or the unsaved views sent): design rules, DynamicFields validation, JSON-LD essentials, the AMP page; with the JSON-LD.");
 
     private static async Task<Results<Ok<DesignReport>, ProblemHttpResult>> HandleAsync(int postId, CheckRequest? request, ISender sender, CancellationToken ct) =>
-        (await sender.Send(new CheckDesignQuery(postId, request?.Views, request?.Culture), ct)).ToOkResult();
+        (await sender.Send(new CheckDesignQuery(postId, request?.Views, request?.Culture, request?.Design), ct)).ToOkResult();
 }
 
 /// <summary>POST /posts/{postId}/design/preview: the studio's Output pane.</summary>
@@ -164,6 +167,32 @@ public sealed class Delete : IEndpoint
 
     private static async Task<Results<NoContent, ProblemHttpResult>> HandleAsync(int postId, int version, ISender sender, CancellationToken ct) =>
         (await sender.Send(new DeleteDesignCommand(postId, version), ct)).ToNoContentResult();
+}
+
+/// <summary>GET /posts/{postId}/workspace?culture=: what the studio opens a post with.</summary>
+public sealed class Workspace : IEndpoint
+{
+    public static RouteHandlerBuilder Map(IEndpointRouteBuilder app) =>
+        app.MapGet("/posts/{postId:int}/workspace", HandleAsync)
+            .RequirePermission(ContentDesignerPermissions.Read)
+            .WithName("ContentDesigner_GetWorkspace")
+            .WithSummary("The studio's workspace of a post: the post and its contents (Content), the renderer's document, the kind's values, the fields' style tokens and the design (null when none).");
+
+    private static async Task<Results<Ok<WorkspaceDto>, ProblemHttpResult>> HandleAsync(int postId, ISender sender, CancellationToken ct, string? culture = null) =>
+        (await sender.Send(new GetWorkspaceQuery(postId, culture), ct)).ToOkResult();
+}
+
+/// <summary>GET /posts/{postId}/events?after=: the post's change feed, for the studio's hot reload.</summary>
+public sealed class Events : IEndpoint
+{
+    public static RouteHandlerBuilder Map(IEndpointRouteBuilder app) =>
+        app.MapGet("/posts/{postId:int}/events", HandleAsync)
+            .RequirePermission(ContentDesignerPermissions.Read)
+            .WithName("ContentDesigner_GetPostEvents")
+            .WithSummary("The post's change feed after an event id (Content's): read the next page with after = last.");
+
+    private static async Task<Results<Ok<FeedPage>, ProblemHttpResult>> HandleAsync(int postId, ISender sender, CancellationToken ct, long after = 0) =>
+        (await sender.Send(new GetPostEventsQuery(postId, after), ct)).ToOkResult();
 }
 
 internal static class Problems

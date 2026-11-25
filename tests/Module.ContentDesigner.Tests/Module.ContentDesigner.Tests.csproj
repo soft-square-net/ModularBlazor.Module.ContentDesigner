@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Unit tests of the studio's client code (Module.ContentDesigner/Studio): the design edits (inheritance, structure,
+       per-view settings), the canvas attributes on the rendered page and the session's undo. No browser, no host. -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Module.ContentDesigner\Module.ContentDesigner.csproj" />
+    <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.Client\WebApi.Modules.ContentDesigner.Client.csproj" />
+    <ProjectReference Include="..\..\src\ContentDesigner.Rendering\ContentDesigner.Rendering.csproj" />
+  </ItemGroup>
+
+</Project>

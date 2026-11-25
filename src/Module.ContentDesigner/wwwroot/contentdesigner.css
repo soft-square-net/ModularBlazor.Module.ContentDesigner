@@ -13,3 +13,77 @@
 .mn-body { min-height: 8em; resize: vertical; font: inherit; }
 .mn-row-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .mn-pager { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 12px; }
+
+/* ───────────── the studio (Pages/Studio.razor and Panels/*) ───────────── */
+.cd-studio { display: flex; flex-direction: column; height: calc(100vh - 140px); min-height: 520px; gap: 8px; }
+.cd-studio__bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 8px; border-radius: var(--mud-default-borderradius, 8px);
+  background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-lines-default); }
+.cd-studio__title { font-weight: 600; max-width: 32ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-studio__spacer { flex: 1; }
+.cd-studio__dock { flex: 1; min-height: 0; position: relative; }
+.cd-studio__dock > .mud-dock { height: 100%; }
+.cd-views { display: inline-flex; border: 1px solid var(--mud-palette-lines-default); border-radius: var(--mud-default-borderradius, 8px); overflow: hidden; }
+.cd-views__tab { border: 0; background: transparent; color: inherit; padding: 4px 10px; cursor: pointer; font: inherit; }
+.cd-views__tab + .cd-views__tab { border-inline-start: 1px solid var(--mud-palette-lines-default); }
+.cd-views__tab.is-active { background: var(--mud-palette-primary); color: var(--mud-palette-primary-text); }
+.cd-views__tab:disabled { opacity: .5; cursor: default; }
+.cd-views__inherits { opacity: .75; }
+.cd-dirty { color: var(--mud-palette-warning); }
+
+.cd-panel { display: flex; flex-direction: column; gap: 8px; padding: 8px; height: 100%; overflow: auto; box-sizing: border-box; font-size: .875rem; }
+.cd-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.cd-section { display: flex; flex-direction: column; gap: 6px; }
+.cd-section__title { margin: 4px 0 0; font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--mud-palette-text-secondary); }
+.cd-row { display: grid; grid-template-columns: 9em 1fr; gap: 6px; align-items: center; }
+.cd-form { display: grid; gap: 4px; }
+.cd-label { color: var(--mud-palette-text-secondary); font-size: .8125rem; }
+.cd-input, .cd-select { font: inherit; padding: 3px 6px; color: var(--mud-palette-text-primary); background: var(--mud-palette-surface);
+  border: 1px solid var(--mud-palette-lines-inputs, var(--mud-palette-lines-default)); border-radius: 4px; min-width: 0; }
+.cd-input--short { width: 7em; }
+.cd-check { display: inline-flex; gap: 4px; align-items: center; }
+.cd-buttons { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.cd-hint, .cd-muted { color: var(--mud-palette-text-secondary); }
+.cd-hint { margin: 0; font-size: .8125rem; }
+.cd-empty { margin: 0; color: var(--mud-palette-text-secondary); font-style: italic; }
+.cd-error { color: var(--mud-palette-error); }
+.cd-warn { color: var(--mud-palette-warning); }
+.cd-ok { color: var(--mud-palette-success); }
+.cd-banner { margin: 0; padding: 6px 10px; border-radius: 4px; background: var(--mud-palette-background-gray, var(--mud-palette-background)); color: var(--mud-palette-text-secondary); }
+
+.cd-tag, .cd-stage { display: inline-block; padding: 0 6px; border-radius: 999px; font-size: .75rem; line-height: 1.5;
+  border: 1px solid var(--mud-palette-lines-default); color: var(--mud-palette-text-secondary); }
+.cd-tag--ok, .cd-stage--done { border-color: var(--mud-palette-success); color: var(--mud-palette-success); }
+.cd-tag--warn, .cd-stage--back { border-color: var(--mud-palette-warning); color: var(--mud-palette-warning); }
+.cd-stage--review { border-color: var(--mud-palette-info); color: var(--mud-palette-info); }
+
+.cd-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cd-list__item { display: flex; gap: 8px; align-items: flex-start; padding: 6px; border-radius: 4px; cursor: pointer; }
+.cd-list__item:hover { background: var(--mud-palette-action-default-hover); }
+.cd-list__item.is-selected { background: var(--mud-palette-primary-hover, var(--mud-palette-action-default-hover)); outline: 1px solid var(--mud-palette-primary); }
+.cd-list__item.is-changed { box-shadow: inset 3px 0 0 var(--mud-palette-info); }
+.cd-list__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.cd-list__title { overflow-wrap: anywhere; }
+.cd-list__meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .75rem; }
+.cd-list__note { font-size: .8125rem; color: var(--mud-palette-text-secondary); }
+.cd-list__where { font-size: .75rem; color: var(--mud-palette-text-secondary); }
+.cd-time { white-space: nowrap; font-size: .75rem; }
+.cd-problem__icon { width: 1.2em; text-align: center; }
+.cd-problem--error .cd-problem__icon { color: var(--mud-palette-error); }
+.cd-problem--warning .cd-problem__icon { color: var(--mud-palette-warning); }
+
+.cd-tree, .cd-tree ul { list-style: none; margin: 0; padding: 0; }
+.cd-tree ul { padding-inline-start: 14px; border-inline-start: 1px dashed var(--mud-palette-lines-default); margin-inline-start: 6px; }
+.cd-tree__item.is-hidden > .cd-tree__label { opacity: .55; text-decoration: line-through; }
+.cd-tree__label { display: flex; gap: 6px; width: 100%; padding: 3px 6px; border: 0; border-radius: 4px; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; }
+.cd-tree__label:hover { background: var(--mud-palette-action-default-hover); }
+.cd-tree__item.is-selected > .cd-tree__label { outline: 1px solid var(--mud-palette-primary); }
+.cd-tree__kind { color: var(--mud-palette-text-secondary); font-size: .75rem; min-width: 5em; }
+
+.cd-designer { display: flex; flex-direction: column; gap: 6px; height: 100%; }
+.cd-canvas { flex: 1; min-height: 360px; }
+.cd-code { flex: 1; min-height: 240px; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; overflow: hidden; }
+.cd-code > .mud-monaco { height: 100%; }
+/* The host's panel root and MudDock's wrapper take the pane's height, so a studio panel fills it. */
+.mud-dock-blazor:has(> .mb-module-panel > .cd-panel), .mb-module-panel:has(> .cd-panel) { height: 100%; }
+.cd-template { flex-wrap: wrap; }
+.cd-template .cd-list__main { flex-basis: 100%; }

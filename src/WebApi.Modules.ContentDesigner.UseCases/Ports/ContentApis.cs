@@ -14,7 +14,11 @@ public sealed record PostContentInfo(
     int Revision,
     int? AcceptedRevision,
     int? PinnedRevision,
-    string Stage);
+    string Stage,
+    string? SectionId = null,
+    string? AssigneeId = null,
+    string? ReviewNote = null,
+    bool Drift = false);
 
 /// <summary>
 /// A post as the designer needs it (Content's <c>GET /posts/{id}</c>): its kind, its working document

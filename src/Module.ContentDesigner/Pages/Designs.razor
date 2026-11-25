@@ -2,9 +2,9 @@
 @inherits ContentDesignerPageBase
 
 @*
-  A read-only overview until the designer studio arrives: the tenant's post designs a page at a time
-  (GET /api/contentdesigner/designs), optionally of one kind, and the document templates
-  (GET /api/contentdesigner/document-templates).
+  The tenant's post designs a page at a time (GET /api/contentdesigner/designs), optionally of one kind, and the
+  document templates (GET /api/contentdesigner/document-templates). A post opens in the studio
+  (/contentdesigner/studio/{postId}): from its row, or by its id (a post that has no design yet gets one there).
 *@
 
 <PageHeader Title="Designs" />
@@ -14,7 +14,8 @@
     <div>
       <p class="mud-typography mud-typography-body1 mn-muted">
         How your organisation's posts are laid out: each post's design (Mobile, Tablet, Desktop and AMP views) and the
-        templates new designs start from. Reading needs contentdesigner.read; the studio to arrange views comes next.
+        templates new designs start from. Open a post in the studio to arrange its views. Reading needs
+        contentdesigner.read; arranging needs contentdesigner.arrange.
       </p>
     </div>
     <form class="mn-actions" @onsubmit="FilterAsync" @onsubmit:preventDefault>
@@ -26,6 +27,15 @@
       </div>
       <button type="submit" class="mud-button-root mud-button-outlined mud-button-primary mud-button-medium" disabled="@Busy">Show</button>
     </form>
+    <form class="mn-actions" @onsubmit="OpenPost" @onsubmit:preventDefault>
+      <div class="mud-input-control mn-inline">
+        <label class="mud-input-label" for="mn-post">Post id</label>
+        <div class="mud-input-wrapper mud-input-wrapper--dense">
+          <input id="mn-post" type="number" min="1" class="mud-input-slot" @bind="_postId" placeholder="12" />
+        </div>
+      </div>
+      <button type="submit" class="mud-button-root mud-button-filled mud-button-primary mud-button-medium" disabled="@(_postId is not > 0)">Open in the studio</button>
+    </form>
   </header>
 
   @if (Error is not null)
@@ -35,7 +45,8 @@
 
   <section class="mud-paper mud-elevation-1 mn-card">
     <h2 class="mud-typography mud-typography-h6">Post designs</h2>
-    <MudTailDataTable @ref="_designs" Columns="DesignColumns" EmptyText="No designs yet." />
+    <MudTailDataTable @ref="_designs" Columns="DesignColumns" EmptyText="No designs yet." OnRowClick="OpenRow" />
+    <p class="mud-typography mud-typography-body2 mn-muted">Click a row to open the post in the studio.</p>
     <div class="mn-pager">
       <span class="mud-typography mud-typography-body2 mn-muted">@PagerText</span>
       <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small" @onclick="() => GoToAsync(_page - 1)" disabled="@(Busy || _page <= 1)">Previous</button>
@@ -75,6 +86,7 @@
   private int _page = 1;
   private int _total;
   private string _kind = "";
+  private int? _postId;
 
   private int LastPage => Math.Max(1, (_total + PageSize - 1) / PageSize);
 
@@ -102,6 +114,7 @@
 
   private static object ToRow(DesignSummary d) => new
   {
+    id = d.PostId.ToString(),
     post = d.PostId.ToString(),
     publicId = d.PublicId,
     kind = d.Kind,
@@ -122,6 +135,13 @@
   {
     _page = Math.Clamp(page, 1, LastPage);
     await LoadAsync();
+  }
+
+  private void OpenRow(string postId) => Nav.NavigateTo($"contentdesigner/studio/{postId}");
+
+  private void OpenPost()
+  {
+    if (_postId is > 0 and var id) Nav.NavigateTo($"contentdesigner/studio/{id}");
   }
 
   private async Task FilterAsync()

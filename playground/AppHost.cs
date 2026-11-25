@@ -6,7 +6,8 @@
 //   install (launch profile "install"): the platform starts without the module, as in production. Every build zips
 //     the module to playground/out/contentdesigner.zip and copies its client parts to playground/out/client; upload the zip on
 //     the client's Host Modules page (http://localhost:5070, sign in as the dev platform admin) and activate it, then
-//     the two dlls on the Client Modules page (the API client first). This runs the real install path before a release.
+//     the client parts on the Client Modules page: the API client's dll first, then Module.ContentDesigner.zip (the UI
+//     and its private ContentDesigner.Rendering.dll). This runs the real install path before a release.
 //
 //   postgres ─► identity (5090)    tenant store + tenant databases + identity database, one server
 //            └► webapi (5080)  ◄── blzwebclient (5070)
