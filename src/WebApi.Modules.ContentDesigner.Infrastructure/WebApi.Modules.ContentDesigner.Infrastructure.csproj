@@ -3,7 +3,8 @@
 
   <!--
     Infrastructure: the tenant DbContext (Data/ContentDesignerDbContext.cs), the entity mappings (Data/Config) and the
-    migrations, one set per engine (Data/Migrations/<Provider>). References Core only.
+    migrations, one set per engine (Data/Migrations/<Provider>), and the Content and DynamicFields HTTP clients (Http/),
+    which implement the UseCases ports. References Core and UseCases.
     The Module SDK compiles it against WebApi.Data (EF Core, TenantDbContext, repositories), provided by the host, and
     makes it loadable on its own (EnableDynamicLoading), which dotnet-ef needs to add migrations to this project.
     It is not the entry assembly: WebApi.Modules.ContentDesigner.Web is.
@@ -11,6 +12,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\WebApi.Modules.ContentDesigner.Core\WebApi.Modules.ContentDesigner.Core.csproj" />
+    <!-- The ports it implements: the Content and DynamicFields HTTP clients. -->
+    <ProjectReference Include="..\WebApi.Modules.ContentDesigner.UseCases\WebApi.Modules.ContentDesigner.UseCases.csproj" />
   </ItemGroup>
 
 </Project>

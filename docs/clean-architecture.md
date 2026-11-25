@@ -9,46 +9,58 @@ ModularBlazor runtime module is: an assembly set that the host loads into a coll
 ```
 src/
   WebApi.Modules.ContentDesigner.Core/            Core       (ModuleLayer Domain)
-    NoteAggregate/Note.cs                    the aggregate: state, rules (DomainException), private setters
-    NoteAggregate/Specifications/            NoteByIdSpec, NotesPageSpec, NoteSearchSpec
+    Designs/                                 the design model: ViewKind, PartRef, StyleTokens, ViewDesign, DesignViews,
+                                             DesignRules (the checks of plan section 4)
+    PostDesignAggregate/PostDesign.cs        a post's design: draft views, published views, pins
+    TemplateAggregate/                       DocumentTemplate, BlockTemplate
+    */Specifications/                        DesignByPostSpec, DesignsPageSpec, DefaultTemplatesSpec, ...
+  ContentDesigner.Rendering/                 Razor class library (no Module SDK): block renderers, the responsive merge,
+                                             PageRenderer (HtmlRenderer to a whole HTML or AMP page), AmpChecker
   WebApi.Modules.ContentDesigner.UseCases/        UseCases   (ModuleLayer Application)
     ContentDesignerPermissions.cs ContentDesignerOptions.cs ResultExtensions.cs
     Behaviors/LoggingBehavior.cs             Mediator pipeline behaviour
-    Notes/NoteDto.cs                         DTOs and helpers the note use cases share
-    Notes/Create/CreateNote.cs               CreateNoteCommand and CreateNoteHandler
-    Notes/Edit/  Notes/Delete/  Notes/GetById/  Notes/List/  Notes/Search/
+    Ports/ContentApis.cs                     IContentApi, IFieldsApi: the other modules' APIs, as the use cases see them
+    Designs/                                 DesignWorkbench (fields, checks, rendering), the design commands and queries
+    Templates/                               document and block template commands and queries
+    Rendering/RenderPublished.cs             the public page, cached
   WebApi.Modules.ContentDesigner.Infrastructure/  Infrastructure
     Data/ContentDesignerDbContext.cs              a TenantDbContext (schema "contentdesigner", tenant filter, domain events)
-    Data/Config/NoteConfiguration.cs         one IEntityTypeConfiguration per entity
+    Data/Config/DesignConfigurations.cs      the entity configurations (views as JSON columns)
     Data/Migrations/<Provider>/              one migration set per database engine
+    Http/                                    Gateway, ContentApi, FieldsApi: typed HTTP clients through the gateway
     InfrastructureServiceExtensions.cs       AddInfrastructureServices()
   WebApi.Modules.ContentDesigner.Web/             Web: the entry assembly and composition root (ModuleLayer Module)
     ContentDesignerModule.cs                      IRuntimeModule: manifest, permissions, settings, ConfigureServices
     Configurations/                          ServiceConfigs (all registrations), MediatorConfig
     ContentDesignerRoutes.cs                      the only ICarterModule: the route table
-    Notes/                                   one endpoint class per route (REPR)
+    Designs/  Templates/  Rendering/         one endpoint class per route (REPR)
     Extensions/                              ResultExtensions (Result -> HTTP), ContentDesignerProblemsFilter
 tests/
-  WebApi.Modules.ContentDesigner.UnitTests/       Core rules; UseCases handlers with NSubstitute
+  WebApi.Modules.ContentDesigner.UnitTests/       Core rules; Rendering (pages, AMP); UseCases handlers with NSubstitute
   WebApi.Modules.ContentDesigner.IntegrationTests/ the DbContext, mapping and specifications on SQLite
 ```
 
 | Layer | Holds | Knows about |
 | --- | --- | --- |
 | Core | Aggregates and their rules (throwing `DomainException`), entity specifications | the platform's SharedKernel (`AggregateRoot`, `IRepository`) and Ardalis.Specification |
-| UseCases | One folder per use case: a command or query and its handler, returning an `Ardalis.Result`; DTOs; permissions; settings | Core; the platform's contracts (`IAccessScopes`, `IGrantStore`); Mediator.Abstractions |
-| Infrastructure | EF Core: the DbContext, mappings, migrations | Core; the platform's data layer (`TenantDbContext`, `EfRepository`) |
+| Rendering | Razor components that turn a design and a post into HTML; the AMP checks | ASP.NET Core components only (from the shared framework) |
+| UseCases | One folder per use case: a command or query and its handler, returning an `Ardalis.Result`; DTOs; permissions; settings; the ports to other modules | Core, Rendering; the platform's contracts (`IAccessScopes`, `ITenantContext`); Mediator.Abstractions |
+| Infrastructure | EF Core: the DbContext, mappings, migrations; the HTTP clients behind the ports | Core, UseCases (the ports); the platform's data layer (`TenantDbContext`, `EfRepository`) |
 | Web | The module entry, registrations, routes, endpoints, HTTP mapping of results | everything above; ASP.NET Core, Carter, the Mediator source generator |
 
 ## Dependency rules
 
 ```
-Core  <-  UseCases  <-  Web
-  ^                      |
-  +---  Infrastructure <-+
+Core  <-  UseCases  <-  Infrastructure  <-  Web
+            |                                |
+            +-> Rendering   <----------------+
 ```
 
-- Core references nothing of the module. UseCases references Core only. Infrastructure references Core only.
+- Core references nothing of the module. Rendering references nothing of the module either (it takes its own render
+  model). UseCases references Core and Rendering. Infrastructure references UseCases, for the ports it implements
+  (`IContentApi`, `IFieldsApi`).
+- Other modules are reached over HTTP through the gateway (`Http/Gateway`), never in process: a module may be
+  unloaded or run in another pool.
 - Web references UseCases and Infrastructure and is the only place that wires them together (`ServiceConfigs`).
 - UseCases never touches EF Core: handlers get `IRepository<T>` / `IReadRepository<T>` (the platform registers EF
   repositories for them) and query with specifications from Core.
@@ -79,19 +91,19 @@ Core  <-  UseCases  <-  Web
 
 ## Adding a feature
 
-A new action on notes, say "pin":
+A new action on designs, say "lock":
 
-1. **Core**: the rule on the aggregate, `Note.Pin(now)`, throwing `DomainException` when not allowed. A new query
-   shape is a specification in `NoteAggregate/Specifications`.
-2. **UseCases**: a folder `Notes/Pin/` with `PinNoteCommand` (`ICommand<Result<NoteDto>>`) and `PinNoteHandler`.
+1. **Core**: the rule on the aggregate, `PostDesign.Lock(by, now)`, throwing `DomainException` when not allowed. A new
+   query shape is a specification in `PostDesignAggregate/Specifications`.
+2. **UseCases**: `LockDesignCommand` (`ICommand<Result<PostDesignDto>>`) and `LockDesignHandler` in `Designs/`.
    Add a permission to `ContentDesignerPermissions` if it needs a new one.
-3. **Web**: `Notes/Pin.cs`, an `IEndpoint` with a static `HandleAsync` that sends the command and returns
-   `Results<Ok<T>, ProblemHttpResult>`; then one line in `ContentDesignerRoutes`. Name it `ContentDesigner_PinNote`: generated
-   clients take their method names from it.
+3. **Web**: `LockDesign` in `Designs/DesignEndpoints.cs`, an `IEndpoint` with a static `HandleAsync` that sends the
+   command and returns `Results<Ok<T>, ProblemHttpResult>`; then one line in `ContentDesignerRoutes`. Name it
+   `ContentDesigner_LockDesign`: generated clients take their method names from it.
 4. **Infrastructure**, if the model changed: the mapping in `Data/Config`, then a migration for every provider (see
    the README) and `dotnet ef migrations has-pending-model-changes` per provider.
 5. **Client**: export the OpenAPI document again (README, "Building") and build: `ContentDesignerClient` gains
-   `PinNoteAsync`. Use it from a page in `Module.ContentDesigner` (pages inherit `ContentDesignerPageBase`: `Api`, `RunAsync`,
+   `LockDesignAsync`. Use it from a page in `Module.ContentDesigner` (pages inherit `ContentDesignerPageBase`: `Api`, `RunAsync`,
    readable errors).
 6. **Tests**: the rule in `UnitTests/Core`, the handler in `UnitTests/UseCases`, a new mapping or specification in
    `IntegrationTests`.
@@ -101,9 +113,3 @@ and a configuration in Infrastructure, and a migration.
 
 Handlers are found by the Mediator source generator at compile time; there is nothing to register. Services that
 several handlers share are registered in `ServiceConfigs`.
-
-## Replacing the example
-
-Delete `Core/NoteAggregate`, `UseCases/Notes`, `Web/Notes`, `Infrastructure/Data/Config/NoteConfiguration.cs`, the
-`Notes` DbSet, the migrations and the note tests; add your aggregate the way the notes are built, update the
-permissions, the manifest's description and settings, and add an initial migration per provider.

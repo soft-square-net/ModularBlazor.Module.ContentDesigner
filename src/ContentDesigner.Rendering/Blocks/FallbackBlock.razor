@@ -1,0 +1,23 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* Any field without a renderer of its own: its values as a list, in the block template's order. Valid AMP too. *@
+@{ var groups = Context.AllValues().GroupBy(v => v.Key).OrderBy(g => Rank(g.Key)).ToList(); }
+@if (groups.Count > 0)
+{
+    <div @attributes="Context.Attributes">
+        <dl>
+            @foreach (var group in groups)
+            {
+                <dt @attributes="Context.Part(group.Key)">@group.Key</dt>
+                @foreach (var value in group)
+                {
+                    <dd @attributes="Context.Part(group.Key)">@value.Text</dd>
+                }
+            }
+        </dl>
+    </div>
+}
+
+@code {
+    private int Rank(string key) => Context.Ordered(key).Any() ? 0 : 1;
+}

@@ -1,0 +1,29 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@* The figcaption of a block: the named values in the block template's order; credit and source in their own element. *@
+@{ var keys = Context.Ordered(Keys).ToList(); }
+@if (keys.Count > 0)
+{
+    <figcaption>
+        @foreach (var key in keys)
+        {
+            if (key is "credit")
+            {
+                <small @attributes="Context.Part(key)">@Context.Text(key)</small>
+            }
+            else if (key is "source")
+            {
+                <cite @attributes="Context.Part(key)">@Context.Text(key)</cite>
+            }
+            else
+            {
+                <span @attributes="Context.Part(key)">@Context.Text(key)</span>
+            }
+            @(" ")
+        }
+    </figcaption>
+}
+
+@code {
+    [Parameter, EditorRequired] public BlockContext Context { get; set; } = default!;
+    [Parameter] public string[] Keys { get; set; } = ["caption", "credit"];
+}

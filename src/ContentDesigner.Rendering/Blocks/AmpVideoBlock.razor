@@ -1,0 +1,39 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.video on AMP: amp-video for a file, amp-iframe for a player address. *@
+@if (Embed.Of(Context, "video") is { } video)
+{
+    var (media, outer) = Context.Split("aspect");
+    var boxed = AmpMedia.IsBoxed(media);
+    var asset = new soft.square.net.ContentDesigner.Rendering.Model.RenderAsset(video.Url);
+    <figure @attributes="outer">
+        <div @attributes="media">
+            @if (video.IsEmbed)
+            {
+                <AmpMedia Element="amp-iframe" Asset="asset" Boxed="boxed" Extra="@IframeAttributes()" />
+            }
+            else
+            {
+                <AmpMedia Element="amp-video" Asset="asset" Boxed="boxed" Extra="@VideoAttributes()" />
+            }
+        </div>
+        <Caption Context="Context" Keys="@(["title", "description"])" />
+    </figure>
+}
+
+@code {
+    private Dictionary<string, object> IframeAttributes() => new()
+    {
+        ["sandbox"] = "allow-scripts allow-same-origin allow-popups",
+        ["allowfullscreen"] = "",
+        ["frameborder"] = "0",
+        ["title"] = Context.Text("title") ?? ""
+    };
+
+    private Dictionary<string, object> VideoAttributes()
+    {
+        var attributes = new Dictionary<string, object> { ["controls"] = "" };
+        if (Context.Asset("thumbnail") is { } poster) attributes["poster"] = poster.Url;
+        return attributes;
+    }
+}

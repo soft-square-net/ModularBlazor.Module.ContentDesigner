@@ -1,0 +1,10 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.quote: the words, then who said them and where (in the block template's order). *@
+@if (Context.Text("text") is { } text)
+{
+    <figure @attributes="Context.Attributes">
+        <blockquote><p>@text</p></blockquote>
+        <Caption Context="Context" Keys="@(["saidBy", "source"])" />
+    </figure>
+}

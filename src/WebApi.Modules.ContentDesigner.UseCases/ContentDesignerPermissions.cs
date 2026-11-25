@@ -7,11 +7,15 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.UseCases;
 public static class ContentDesignerPermissions
 {
     public const string Read = "contentdesigner.read";
-    public const string Write = "contentdesigner.write";
+    public const string Arrange = "contentdesigner.arrange";
+    public const string Templates = "contentdesigner.templates";
+    public const string Publish = "contentdesigner.publish";
 
     public static IReadOnlyList<PermissionDefinition> All { get; } =
     [
-        new(Read, "Read and search notes."),
-        new(Write, "Create, edit and delete notes.")
+        new(Read, "See post designs and templates, run the checks and preview the pages."),
+        new(Arrange, "Open a post in the designer, arrange its views and apply templates."),
+        new(Templates, "Create, change and delete document and block templates, and choose the default per kind."),
+        new(Publish, "Publish and unpublish a post's design.")
     ];
 }

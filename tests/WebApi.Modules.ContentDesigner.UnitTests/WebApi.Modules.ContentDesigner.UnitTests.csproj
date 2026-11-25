@@ -1,11 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Unit tests of Core (aggregate rules) and UseCases (handlers, with NSubstitute for the repositories and the
-       platform's IAccessScopes / IGrantStore). No database, no host. -->
+  <!-- Unit tests of Core (aggregate and design rules), Rendering (merge, renderers, pages, AMP checks) and UseCases
+       (handlers, with NSubstitute for the repositories, the Content and DynamicFields ports and IAccessScopes).
+       No database, no host. The ASP.NET Core shared framework stands in for the host (HtmlRenderer, Components). -->
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.Core\WebApi.Modules.ContentDesigner.Core.csproj" />
     <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.UseCases\WebApi.Modules.ContentDesigner.UseCases.csproj" />
+    <ProjectReference Include="..\..\src\ContentDesigner.Rendering\ContentDesigner.Rendering.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,10 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.audio: its title and description, then the player. *@
+@if (Context.Asset("audio") is { } audio)
+{
+    <figure @attributes="Context.Attributes">
+        <Caption Context="Context" Keys="@(["title", "description"])" />
+        <audio src="@audio.Url" controls preload="none"></audio>
+    </figure>
+}

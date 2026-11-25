@@ -1,0 +1,13 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.image on AMP: amp-img fills an aspect box; without one it keeps its own ratio (16:9 when the size is unknown). *@
+@if (Context.Asset("image") is { } image)
+{
+    var (media, outer) = Context.Split("aspect");
+    <figure @attributes="outer">
+        <div @attributes="media">
+            <AmpMedia Element="amp-img" Asset="image" Boxed="@AmpMedia.IsBoxed(media)" Extra="@(new Dictionary<string, object> { ["alt"] = Context.Text("alt") ?? "" })" />
+        </div>
+        <Caption Context="Context" />
+    </figure>
+}

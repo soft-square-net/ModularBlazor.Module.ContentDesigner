@@ -1,5 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using soft.square.net.WebApi.Contracts.Tenancy;
 using soft.square.net.WebApi.Modules.ContentDesigner.Infrastructure.Data;
 
@@ -18,7 +20,9 @@ public sealed class ContentDesignerDatabase : IDisposable
     public ContentDesignerDatabase()
     {
         _connection.Open();
-        _options = new DbContextOptionsBuilder<ContentDesignerDbContext>().UseSqlite(_connection).Options;
+        _options = new DbContextOptionsBuilder<ContentDesignerDbContext>().UseSqlite(_connection)
+            .ReplaceService<IModelCustomizer, SqliteModelCustomizer>()
+            .Options;
         using var context = For("acme");
         context.Database.EnsureCreated();
     }
@@ -26,6 +30,20 @@ public sealed class ContentDesignerDatabase : IDisposable
     public ContentDesignerDbContext For(string? tenantId) => new(_options, new TestTenant(tenantId));
 
     public void Dispose() => _connection.Dispose();
+
+    /// <summary>
+    /// SQLite cannot order by a DateTimeOffset (the module's providers can): store them as sortable binary numbers here.
+    /// </summary>
+    private sealed class SqliteModelCustomizer(ModelCustomizerDependencies dependencies) : RelationalModelCustomizer(dependencies)
+    {
+        public override void Customize(ModelBuilder modelBuilder, DbContext context)
+        {
+            base.Customize(modelBuilder, context);
+            foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(e => e.GetProperties())
+                         .Where(p => p.ClrType == typeof(DateTimeOffset) || p.ClrType == typeof(DateTimeOffset?)))
+                property.SetValueConverter(new DateTimeOffsetToBinaryConverter());
+        }
+    }
 
     private sealed class TestTenant(string? id) : ITenantContext
     {

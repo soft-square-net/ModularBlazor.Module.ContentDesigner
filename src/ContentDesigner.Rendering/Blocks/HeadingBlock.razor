@@ -1,0 +1,7 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.heading: the element follows the level token (h2 by default), so the outline and the look agree. *@
+@if (Context.Text("text") is { } text)
+{
+    <DynamicHeading Level="@(Context.Token("level") ?? "h2")" Attributes="Context.Attributes">@text</DynamicHeading>
+}

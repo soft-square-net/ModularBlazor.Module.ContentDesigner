@@ -1,0 +1,59 @@
+@namespace soft.square.net.ContentDesigner.Rendering
+@using System.Globalization
+@using soft.square.net.ContentDesigner.Rendering.Blocks
+@*
+  One root value of the post (prop:{key}): the headline is the page's h1; an asset an image; a date a <time>; an
+  address a link; anything else its text. The value's kind comes from the document's Values (DynamicFields), else from
+  the value itself.
+*@
+@{ var texts = BlockContext.ValueTexts(Page.Document.Root, Node.Key); }
+@if (texts.Count > 0)
+{
+    var kind = Kind(texts[0]);
+    if (Node.Key == "headline")
+    {
+        <h1 @attributes="Node.Attributes">@texts[0]</h1>
+    }
+    else if (kind == "Asset")
+    {
+        var asset = Settings.Asset(texts[0], Page.Document.Assets);
+        <figure @attributes="Node.Attributes">
+            @if (Page.Amp)
+            {
+                <AmpMedia Element="amp-img" Asset="asset" Extra="@(new Dictionary<string, object> { ["alt"] = Page.Document.Title })" />
+            }
+            else
+            {
+                <img src="@asset.Url" alt="@Page.Document.Title" width="@asset.Width" height="@asset.Height" decoding="async" />
+            }
+        </figure>
+    }
+    else if (kind is "Date" or "DateTime" && DateTimeOffset.TryParse(texts[0], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+    {
+        var culture = BlockContext.CultureOf(Page.Document.Culture);
+        <p @attributes="Node.Attributes"><time datetime="@texts[0]">@(kind == "Date" ? at.ToString("D", culture) : at.ToString("f", culture))</time></p>
+    }
+    else if (kind == "Url" && Uri.TryCreate(texts[0], UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
+    {
+        <p @attributes="Node.Attributes"><a href="@uri.AbsoluteUri">@texts[0]</a></p>
+    }
+    else
+    {
+        <p @attributes="Node.Attributes">@string.Join(", ", texts)</p>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public PropNode Node { get; set; } = default!;
+    [Parameter, EditorRequired] public PageModel Page { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderSettings Settings { get; set; } = default!;
+
+    private string Kind(string value)
+    {
+        if (Page.Document.Values?.TryGetValue(Node.Key, out var known) == true) return known.Kind;
+        if (Node.Key is "image" or "thumbnail" or "thumbnailUrl") return "Asset";
+        if (Node.Key.StartsWith("date", StringComparison.Ordinal) && DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, out _))
+            return value.Length <= 10 ? "Date" : "DateTime";
+        return "Text";
+    }
+}
