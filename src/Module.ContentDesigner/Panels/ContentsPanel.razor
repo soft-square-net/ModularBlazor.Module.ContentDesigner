@@ -1,0 +1,80 @@
+@inherits StudioPanelBase
+@*
+  The contents tray: every content attached to the post (Content's shared library) with its stage, section and
+  assignee, and whether the current view places it by name, shows it through "items", or not at all; then the post's
+  own values (the kind's root values). Click to select. Contents a section changed since the post was opened are marked.
+*@
+
+<div class="cd-panel cd-contents">
+  @if (Session?.Workspace is not { } workspace || Session.Current is not { } design)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else
+  {
+    var itemsPlaced = DesignEditor.FindPlacement(design, "items") is not null;
+    <section class="cd-section">
+      <h3 class="cd-section__title">Contents <span class="cd-muted">(@workspace.Contents.Count)</span></h3>
+      <ul class="cd-list" role="listbox" aria-label="Contents">
+        @foreach (var content in workspace.Contents.OrderBy(c => c.Order))
+        {
+          var id = "content:" + content.ContentId;
+          var placed = DesignEditor.FindPlacement(design, id);
+          var where = placed is not null ? (placed.Hidden ? "hidden here" : $"in {placed.RegionId}") : itemsPlaced ? "via items" : "not shown";
+          <li class="cd-list__item @(Session.Selected == id ? "is-selected" : "") @(Session.ChangedContents.Contains(content.ContentId) ? "is-changed" : "")"
+              role="option" aria-selected="@(Session.Selected == id)" tabindex="0"
+              @onclick="() => Session.Select(id)" @onkeydown="e => Key(e, id)">
+            <span class="cd-list__main">
+              <span class="cd-list__title">@StudioText.Content(Session, content.ContentId)</span>
+              <span class="cd-list__meta">
+                <span class="@StudioText.StageClass(content.Stage)">@content.Stage</span>
+                @if (content.Required) { <span class="cd-tag">required</span> }
+                @if (content.Drift) { <span class="cd-tag cd-tag--warn" title="A newer accepted revision than the one pinned">drift</span> }
+                @if (content.SectionId is { } section) { <span class="cd-muted">§ @section</span> }
+                @if (content.AssigneeId is { } assignee) { <span class="cd-muted">→ @Short(assignee)</span> }
+              </span>
+              @if (content.ReviewNote is { Length: > 0 } note) { <span class="cd-list__note">“@note”</span> }
+            </span>
+            <span class="cd-list__where @(placed is null && !itemsPlaced ? "cd-warn" : "")">@where</span>
+          </li>
+        }
+      </ul>
+      @if (workspace.Contents.Count == 0)
+      {
+        <p class="cd-empty">The post has no contents yet. Sections add them in Content.</p>
+      }
+    </section>
+
+    <section class="cd-section">
+      <h3 class="cd-section__title">Post values <span class="cd-muted">(@workspace.Post.Kind v@(workspace.Post.KindVersion))</span></h3>
+      <ul class="cd-list" role="listbox" aria-label="Post values">
+        @foreach (var value in workspace.KindValues)
+        {
+          var id = "prop:" + value.Key;
+          var placed = DesignEditor.FindPlacement(design, id);
+          <li class="cd-list__item @(Session.Selected == id ? "is-selected" : "")" role="option" aria-selected="@(Session.Selected == id)" tabindex="0"
+              @onclick="() => Session.Select(id)" @onkeydown="e => Key(e, id)">
+            <span class="cd-list__main">
+              <span class="cd-list__title">@value.Label</span>
+              <span class="cd-list__meta">
+                <span class="cd-muted">@value.Kind</span>
+                @if (value.Required) { <span class="cd-tag">required</span> }
+                @if (value.SchemaProperty is { } schema) { <span class="cd-muted">schema.org @schema</span> }
+              </span>
+            </span>
+            <span class="cd-list__where @(placed is null && value.Required ? "cd-warn" : "")">@(placed is null ? "not placed" : placed.Hidden ? "hidden here" : $"in {placed.RegionId}")</span>
+          </li>
+        }
+      </ul>
+    </section>
+  }
+</div>
+
+@code {
+  private static string Short(string id) => id.Length > 8 ? id[..8] : id;
+
+  private void Key(KeyboardEventArgs e, string id)
+  {
+    if (e.Key is "Enter" or " ") Session?.Select(id);
+  }
+}

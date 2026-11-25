@@ -24,6 +24,13 @@ public static class ResponsiveMerge
     public static PageModel Amp(RenderDocument document, RenderDesign design) =>
         Build(document, [design.Amp], [TokenMap.Base], amp: true);
 
+    /// <summary>
+    /// One view alone as a web page, base values only, with the web renderers: the studio's AMP tab, which shows the AMP
+    /// view's arrangement in a browser that runs no AMP runtime.
+    /// </summary>
+    public static PageModel Single(RenderDocument document, RenderView view) =>
+        Build(document, [view], [TokenMap.Base], amp: false);
+
     private sealed record Child(int Order, int Type, int Index, RenderRegion? Region, RenderPlacement? Placement)
     {
         public string Key => Region is not null ? "region:" + Region.Id : Placement!.Part;

@@ -11,5 +11,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/WebApi.Modules.ContentDesigner.UnitTests/WebApi.Modules.ContentDesigner.UnitTests.csproj" />
     <Project Path="tests/WebApi.Modules.ContentDesigner.IntegrationTests/WebApi.Modules.ContentDesigner.IntegrationTests.csproj" />
+    <Project Path="tests/Module.ContentDesigner.Tests/Module.ContentDesigner.Tests.csproj" />
   </Folder>
 </Solution>

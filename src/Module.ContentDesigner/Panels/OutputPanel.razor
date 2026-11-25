@@ -1,0 +1,61 @@
+@inherits StudioPanelBase
+@*
+  The pages the server renders from the views as edited (POST .../design/preview): the responsive HTML, and the AMP
+  page with its CSS size and the AMP rules it breaks.
+*@
+
+<div class="cd-panel cd-output">
+  <div class="cd-toolbar" role="toolbar" aria-label="Output">
+    <button type="button" class="mud-button-root mud-button-small @(_amp ? "mud-button-text" : "mud-button-filled mud-button-primary")"
+            disabled="@(Session?.Views is null)" @onclick="() => ShowAsync(false)">Responsive HTML</button>
+    <button type="button" class="mud-button-root mud-button-small @(_amp ? "mud-button-filled mud-button-primary" : "mud-button-text")"
+            disabled="@(Session?.Views is null)" @onclick="() => ShowAsync(true)">AMP HTML</button>
+    @if (_loading)
+    {
+      <span class="cd-muted" role="status">Rendering…</span>
+    }
+    @if (_preview is { Amp: true } amp)
+    {
+      <span class="@(amp.AmpIssues.Count == 0 ? "cd-ok" : "cd-error")">@(amp.AmpIssues.Count == 0 ? "AMP rules pass" : $"{amp.AmpIssues.Count} AMP issue(s)")</span>
+      <span class="cd-muted">CSS @(amp.CssBytes.ToString("N0")) of 75,000 bytes</span>
+    }
+  </div>
+  @if (_preview is { } preview)
+  {
+    @if (preview.AmpIssues.Count > 0)
+    {
+      <ul class="cd-list">
+        @foreach (var issue in preview.AmpIssues)
+        {
+          <li class="cd-list__item cd-problem cd-problem--error"><span class="cd-tag">@issue.Rule</span> @issue.Message</li>
+        }
+      </ul>
+    }
+    <CodeView Value="@preview.Html" Language="html" Label="@(preview.Amp ? "AMP HTML" : "HTML")" />
+  }
+  else if (Session?.Error is { } error && _tried)
+  {
+    <p class="cd-error" role="alert">@error</p>
+  }
+  else
+  {
+    <p class="cd-empty">Render the page the server would publish.</p>
+  }
+</div>
+
+@code {
+  private PreviewDto? _preview;
+  private bool _amp;
+  private bool _loading;
+  private bool _tried;
+
+  private async Task ShowAsync(bool amp)
+  {
+    if (Session is null) return;
+    _amp = amp;
+    _loading = true;
+    _tried = true;
+    _preview = await Session.PreviewAsync(amp);
+    _loading = false;
+  }
+}

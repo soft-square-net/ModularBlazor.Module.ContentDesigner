@@ -1,0 +1,101 @@
+@inherits StudioPanelBase
+@*
+  The current view as a tree: regions (section, row, column; four deep at most) and the parts placed in them, in display
+  order. Add a region at the top or in the selected one; the parts not placed yet can be placed in the selected region.
+  Mobile, Tablet and Desktop share one structure, so adding, removing or moving there changes all three; AMP has its own.
+*@
+
+<div class="cd-panel cd-structure">
+  @if (Session?.Views is null || Session.Current is not { } design)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else
+  {
+    var selectedRegion = Session.Selected is { } s && DesignEditor.IsRegion(s) ? DesignEditor.RegionId(s) : null;
+    <div class="cd-toolbar" role="toolbar" aria-label="Structure">
+      <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick='() => Add("Section", null)'>+ Section</button>
+      <button type="button" class="mud-button-root mud-button-text mud-button-small" disabled="@(selectedRegion is null)"
+              title="In the selected region" @onclick='() => Add("Row", selectedRegion)'>+ Row</button>
+      <button type="button" class="mud-button-root mud-button-text mud-button-small" disabled="@(selectedRegion is null)"
+              title="In the selected region" @onclick='() => Add("Column", selectedRegion)'>+ Column</button>
+    </div>
+    @if (Views.IsWeb(Session.View))
+    {
+      <p class="cd-hint">One structure for Mobile, Tablet and Desktop; each view orders, sizes, hides and styles it.</p>
+    }
+
+    <ul class="cd-tree" role="tree" aria-label="@($"{Views.Label(Session.View)} view")">
+      @Children(design, null, 1)
+    </ul>
+
+    var unplaced = Unplaced(design).ToList();
+    @if (unplaced.Count > 0)
+    {
+      <section class="cd-section">
+        <h3 class="cd-section__title">Not placed in this view</h3>
+        <ul class="cd-list">
+          @foreach (var part in unplaced)
+          {
+            <li class="cd-list__item @(Session.Selected == part ? "is-selected" : "")" @onclick="() => Session.Select(part)">
+              <span class="cd-list__title">@StudioText.Title(Session, part)</span>
+              <button type="button" class="mud-button-root mud-button-text mud-button-small" disabled="@(selectedRegion is null)"
+                      title="@(selectedRegion is null ? "Select a region first" : $"Place in {selectedRegion}")"
+                      @onclick:stopPropagation="true" @onclick="() => Place(part, selectedRegion!)">Place</button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  }
+</div>
+
+@code {
+  private RenderFragment Children(DView design, string? regionId, int level) => __builder =>
+  {
+    foreach (var id in DesignEditor.Children(design, regionId))
+    {
+      var isRegion = DesignEditor.IsRegion(id);
+      var region = isRegion ? DesignEditor.FindRegion(design, DesignEditor.RegionId(id)) : null;
+      var placement = isRegion ? null : DesignEditor.FindPlacement(design, id);
+      var hidden = region?.Hidden ?? placement?.Hidden ?? false;
+      <li class="cd-tree__item @(Session!.Selected == id ? "is-selected" : "") @(hidden ? "is-hidden" : "")" role="treeitem"
+          aria-level="@level" aria-selected="@(Session.Selected == id)">
+        <button type="button" class="cd-tree__label" @onclick="() => Session.Select(id)">
+          <span class="cd-tree__kind">@(isRegion ? region!.Kind : id.Split(':')[0])</span>
+          @StudioText.Title(Session, id)
+          @if (hidden) { <span class="cd-tag">hidden</span> }
+          @if ((region?.Span ?? placement?.Span) is { } span) { <span class="cd-tag">span @span</span> }
+        </button>
+        @if (isRegion)
+        {
+          <ul role="group">@Children(design, region!.Id, level + 1)</ul>
+        }
+      </li>
+    }
+  };
+
+  private IEnumerable<string> Unplaced(DView design)
+  {
+    var placed = design.AllPlacements.Select(p => p.Part).ToHashSet(StringComparer.Ordinal);
+    if (!placed.Contains("items")) yield return "items";
+    foreach (var value in Session!.Workspace?.KindValues ?? [])
+      if (!placed.Contains("prop:" + value.Key)) yield return "prop:" + value.Key;
+    foreach (var content in Session.Workspace?.Contents ?? [])
+      if (!placed.Contains("content:" + content.ContentId)) yield return "content:" + content.ContentId;
+  }
+
+  private void Add(string kind, string? parentId)
+  {
+    var view = Session!.View;
+    string? added = null;
+    Session.Edit(v => { var (views, id) = DesignEditor.AddRegion(v, view, kind, parentId); added = id; return views; });
+    if (added is not null) Session.Select(DesignEditor.RegionPrefix + added);
+  }
+
+  private void Place(string part, string regionId)
+  {
+    var view = Session!.View;
+    Session.Edit(v => DesignEditor.Place(v, view, part, regionId), part);
+  }
+}

@@ -34,9 +34,11 @@ public sealed class GetDesignHandler(IReadRepository<PostDesign> designs) : IQue
 
 /// <summary>
 /// Run the checks on the draft (all views, or the ones named) against the post as it is now in Content: the design
-/// rules, DynamicFields' validation, the JSON-LD essentials and the AMP page.
+/// rules, DynamicFields' validation, the JSON-LD essentials and the AMP page. With <see cref="Design"/>, those unsaved
+/// views instead of the stored draft (the studio checks while editing).
 /// </summary>
-public sealed record CheckDesignQuery(int PostId, IReadOnlyList<ViewKind>? Views = null, string? Culture = null) : IQuery<Result<DesignReport>>;
+public sealed record CheckDesignQuery(int PostId, IReadOnlyList<ViewKind>? Views = null, string? Culture = null, DesignViews? Design = null)
+    : IQuery<Result<DesignReport>>;
 
 public sealed class CheckDesignHandler(IReadRepository<PostDesign> designs, IContentApi content, DesignWorkbench workbench)
     : IQueryHandler<CheckDesignQuery, Result<DesignReport>>
@@ -48,8 +50,9 @@ public sealed class CheckDesignHandler(IReadRepository<PostDesign> designs, ICon
                 return Result<DesignReport>.NotFound(DesignResults.NoDesign(query.PostId));
             if (await content.GetPostAsync(query.PostId, ct) is not { } post)
                 return Result<DesignReport>.NotFound(DesignResults.NoPost(query.PostId));
-            var problems = await workbench.CheckAsync(design.Draft, design.KindVersion, post, query.Views, query.Culture, ct);
-            return DesignReport.From(problems);
+            var views = query.Design?.Checked() ?? design.Draft;
+            var (problems, jsonLd) = await workbench.CheckWithJsonLdAsync(views, design.KindVersion, post, query.Views, query.Culture, ct);
+            return DesignReport.From(problems, jsonLd);
         });
 }
 

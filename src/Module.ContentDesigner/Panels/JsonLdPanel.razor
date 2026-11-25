@@ -1,0 +1,28 @@
+@inherits StudioPanelBase
+@*
+  The post's JSON-LD as DynamicFields builds it from the kind and each content's schema.org mapping (from the last
+  check). It is the same in every view: views change the layout, never the data.
+*@
+
+<div class="cd-panel cd-jsonld">
+  @if (Session?.Report?.JsonLd is { } jsonLd)
+  {
+    <CodeView Value="@Pretty(jsonLd)" Language="json" Label="JSON-LD" />
+  }
+  else
+  {
+    <p class="cd-empty">@(Session?.Report is null ? "Run Check to build the JSON-LD." : "DynamicFields built no JSON-LD for this post.")</p>
+    <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+            disabled="@(Session?.Views is null || Session.Checking)" @onclick="CheckAsync">Check</button>
+  }
+</div>
+
+@code {
+  private Task CheckAsync() => Session?.CheckAsync() ?? Task.CompletedTask;
+
+  private static string Pretty(string json)
+  {
+    try { return JsonSerializer.Serialize(JsonDocument.Parse(json).RootElement, new JsonSerializerOptions { WriteIndented = true }); }
+    catch (JsonException) { return json; }
+  }
+}

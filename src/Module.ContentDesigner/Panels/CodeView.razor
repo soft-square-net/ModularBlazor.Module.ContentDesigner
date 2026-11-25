@@ -1,0 +1,40 @@
+@implements IAsyncDisposable
+@inject MudTailRuntime MudTail
+@*
+  Read-only code (JSON-LD, the output HTML) in MudTail's Monaco (pack "monaco", loaded on first use); a textarea until
+  Monaco runs, and for good when it cannot load.
+*@
+<div class="cd-code" @ref="_host"></div>
+
+@code {
+  [Parameter, EditorRequired] public string Value { get; set; } = "";
+  [Parameter] public string Language { get; set; } = "json";
+  [Parameter] public string? Label { get; set; }
+
+  private ElementReference _host;
+  private IJSObjectReference? _editor;
+  private string? _shown;
+  private bool _creating;
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (_editor is null && !_creating)
+    {
+      _creating = true;
+      _editor = await MudTail.CreateAsync("monaco", _host, new
+      {
+        value = Value, language = Language, readOnly = true, languages = false, minimap = false, wordWrap = "on", ariaLabel = Label ?? Language
+      });
+      _shown = Value;
+      return;
+    }
+    if (_editor is not null && _shown != Value)
+    {
+      _shown = Value;
+      await _editor.InvokeVoidAsync("setLanguage", Language);
+      await _editor.InvokeVoidAsync("setValue", Value);
+    }
+  }
+
+  public async ValueTask DisposeAsync() => await MudTailInterop.DisposeHandleAsync(_editor);
+}

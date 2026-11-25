@@ -42,13 +42,16 @@ public sealed record DesignSummary(int Id, int PostId, string PublicId, string K
 
 public sealed record DesignPage(IReadOnlyList<DesignSummary> Items, int Page, int PageSize, int Total);
 
-/// <summary>The checks' findings: <see cref="Valid"/> when there is no error (warnings do not block publication).</summary>
-public sealed record DesignReport(bool Valid, int Errors, int Warnings, IReadOnlyList<DesignProblem> Problems)
+/// <summary>
+/// The checks' findings: <see cref="Valid"/> when there is no error (warnings do not block publication). <see cref="JsonLd"/>
+/// is the post's JSON-LD as DynamicFields built it for the check (null when it built none), for the studio's JSON-LD panel.
+/// </summary>
+public sealed record DesignReport(bool Valid, int Errors, int Warnings, IReadOnlyList<DesignProblem> Problems, string? JsonLd = null)
 {
-    public static DesignReport From(IReadOnlyList<DesignProblem> problems)
+    public static DesignReport From(IReadOnlyList<DesignProblem> problems, string? jsonLd = null)
     {
         var errors = problems.Count(p => p.Severity == ProblemSeverity.Error);
-        return new(errors == 0, errors, problems.Count - errors, problems);
+        return new(errors == 0, errors, problems.Count - errors, problems, jsonLd);
     }
 }
 

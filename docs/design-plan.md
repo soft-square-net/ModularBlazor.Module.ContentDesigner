@@ -151,7 +151,7 @@ Permissions: `contentdesigner.read`, `contentdesigner.arrange`, `contentdesigner
    - UI.MudTail packs (`designer`, `monaco`, `editorial`).
 4. **ContentDesigner core**: PostDesign, templates, design rules, API; the Rendering RCL with server HTML/AMP. The Note
    example is removed here.
-5. **Studio v1**:
+5. **Studio v1** (done; see [studio-v1-plan.md](studio-v1-plan.md)):
    - open a post;
    - the contents tray with stages;
    - arranging in four views;
@@ -171,3 +171,8 @@ Permissions: `contentdesigner.read`, `contentdesigner.arrange`, `contentdesigner
 - ModuleTemplate: `tests/Directory.Build.props` pins its own platform version (preview.2), apart from `global.json`.
   Bumping one without the other causes NU1605 downgrade errors. This repo bumps both to preview.3.
 - The playground does not run Elsa yet: it needs its own database, a service client secret and a workflow pool.
+- Platform: `ClientModuleCatalog` installs a client module with `Directory.Move(staging, target)` and no retry. On
+  Windows a file still held open (antivirus, the indexer) makes it throw "Access to the path ... is denied", which
+  aborts every client module's seeding, so the shell does not start. Retry the move briefly.
+- MudDock takes a panel icon as markup, and a dock panel names a Lucide icon, so the studio shows its panes without icons.
+- `FieldVersionInfo` could carry the field's title, so the contents tray shows "Heading" from the field, not from its key.

@@ -12,7 +12,8 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
     private const string Service = "Content";
 
     private sealed record PostContentWire(Guid ContentId, int Order, bool Required, int? PinnedRevision, string NodeId, string FieldKey,
-        int FieldVersion, string Stage, int Revision, int? AcceptedRevision);
+        int FieldVersion, string Stage, int Revision, int? AcceptedRevision, string? SectionId = null, string? AssigneeId = null,
+        string? ReviewNote = null, bool Drift = false);
 
     private sealed record PostWire(int Id, string Title, int Version, string PublicId, string? Permalink, string SchemaId, int SchemaVersion,
         JsonElement Document, List<PostContentWire>? Contents);
@@ -31,7 +32,8 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
         var kind = DocumentKind(post.Document, post.SchemaId, post.SchemaVersion);
         return new ContentPost(post.Id, post.PublicId, post.Permalink, post.Title, kind.Key, kind.Version, post.Version, post.Document,
             [.. (post.Contents ?? []).OrderBy(c => c.Order).Select(c => new PostContentInfo(c.ContentId.ToString(), c.NodeId, c.FieldKey,
-                c.FieldVersion, c.Order, c.Required, c.Revision, c.AcceptedRevision, c.PinnedRevision, c.Stage))]);
+                c.FieldVersion, c.Order, c.Required, c.Revision, c.AcceptedRevision, c.PinnedRevision, c.Stage, c.SectionId, c.AssigneeId,
+                c.ReviewNote, c.Drift))]);
     }
 
     public async Task<PublishedPost?> GetPublishedAsync(string publicId, string? culture, CancellationToken ct)

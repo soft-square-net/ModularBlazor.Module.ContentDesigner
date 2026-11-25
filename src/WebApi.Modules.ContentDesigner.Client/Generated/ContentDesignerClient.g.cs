@@ -90,7 +90,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Check the draft: design rules, DynamicFields validation, JSON-LD essentials, the AMP page.
+        /// Check the draft (or the unsaved views sent): design rules, DynamicFields validation, JSON-LD essentials, the AMP page; with the JSON-LD.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
@@ -119,6 +119,22 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
         System.Threading.Tasks.Task<PostDesignDto> UnpublishDesignAsync(int postId, UnpublishRequest body, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// The studio's workspace of a post: the post and its contents (Content), the renderer's document, the kind's values, the fields' style tokens and the design (null when none).
+        /// </summary>
+        /// <returns>OK</returns>
+        /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
+        System.Threading.Tasks.Task<WorkspaceDto> GetWorkspaceAsync(int postId, string? culture = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// The post's change feed after an event id (Content's): read the next page with after = last.
+        /// </summary>
+        /// <returns>OK</returns>
+        /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
+        System.Threading.Tasks.Task<FeedPage> GetPostEventsAsync(int postId, long? after = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken));
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
@@ -852,7 +868,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Check the draft: design rules, DynamicFields validation, JSON-LD essentials, the AMP page.
+        /// Check the draft (or the unsaved views sent): design rules, DynamicFields validation, JSON-LD essentials, the AMP page; with the JSON-LD.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
@@ -1162,6 +1178,176 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
                         if (status_ == 200)
                         {
                             var objectResponse_ = await ReadObjectResponseAsync<PostDesignDto>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new ContentDesignerApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            return objectResponse_.Object;
+                        }
+                        else
+                        {
+                            var responseData_ = response_.Content == null ? null : await ReadAsStringAsync(response_.Content, cancellationToken).ConfigureAwait(false);
+                            throw new ContentDesignerApiException("The HTTP status code of the response was not expected (" + status_ + ").", status_, responseData_, headers_, null);
+                        }
+                    }
+                    finally
+                    {
+                        if (disposeResponse_)
+                            response_.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                if (disposeClient_)
+                    client_.Dispose();
+            }
+        }
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// The studio's workspace of a post: the post and its contents (Content), the renderer's document, the kind's values, the fields' style tokens and the design (null when none).
+        /// </summary>
+        /// <returns>OK</returns>
+        /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
+        public virtual async System.Threading.Tasks.Task<WorkspaceDto> GetWorkspaceAsync(int postId, string? culture = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            if (postId == null)
+                throw new System.ArgumentNullException("postId");
+
+            var client_ = _httpClient;
+            var disposeClient_ = false;
+            try
+            {
+                using (var request_ = new System.Net.Http.HttpRequestMessage())
+                {
+                    request_.Method = new System.Net.Http.HttpMethod("GET");
+                    request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
+
+                    var urlBuilder_ = new System.Text.StringBuilder();
+                
+                    // Operation Path: "api/contentdesigner/posts/{postId}/workspace"
+                    urlBuilder_.Append("api/contentdesigner/posts/");
+                    urlBuilder_.Append(System.Uri.EscapeDataString(ConvertToString(postId, System.Globalization.CultureInfo.InvariantCulture)));
+                    urlBuilder_.Append("/workspace");
+                    urlBuilder_.Append('?');
+                    if (culture != null)
+                    {
+                        urlBuilder_.Append(System.Uri.EscapeDataString("culture")).Append('=').Append(System.Uri.EscapeDataString(ConvertToString(culture, System.Globalization.CultureInfo.InvariantCulture))).Append('&');
+                    }
+                    urlBuilder_.Length--;
+
+                    PrepareRequest(client_, request_, urlBuilder_);
+
+                    var url_ = urlBuilder_.ToString();
+                    request_.RequestUri = new System.Uri(url_, System.UriKind.RelativeOrAbsolute);
+
+                    PrepareRequest(client_, request_, url_);
+
+                    var response_ = await client_.SendAsync(request_, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    var disposeResponse_ = true;
+                    try
+                    {
+                        var headers_ = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IEnumerable<string>>();
+                        foreach (var item_ in response_.Headers)
+                            headers_[item_.Key] = item_.Value;
+                        if (response_.Content != null && response_.Content.Headers != null)
+                        {
+                            foreach (var item_ in response_.Content.Headers)
+                                headers_[item_.Key] = item_.Value;
+                        }
+
+                        ProcessResponse(client_, response_);
+
+                        var status_ = (int)response_.StatusCode;
+                        if (status_ == 200)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<WorkspaceDto>(response_, headers_, cancellationToken).ConfigureAwait(false);
+                            if (objectResponse_.Object == null)
+                            {
+                                throw new ContentDesignerApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
+                            }
+                            return objectResponse_.Object;
+                        }
+                        else
+                        {
+                            var responseData_ = response_.Content == null ? null : await ReadAsStringAsync(response_.Content, cancellationToken).ConfigureAwait(false);
+                            throw new ContentDesignerApiException("The HTTP status code of the response was not expected (" + status_ + ").", status_, responseData_, headers_, null);
+                        }
+                    }
+                    finally
+                    {
+                        if (disposeResponse_)
+                            response_.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                if (disposeClient_)
+                    client_.Dispose();
+            }
+        }
+
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>
+        /// The post's change feed after an event id (Content's): read the next page with after = last.
+        /// </summary>
+        /// <returns>OK</returns>
+        /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
+        public virtual async System.Threading.Tasks.Task<FeedPage> GetPostEventsAsync(int postId, long? after = null, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken))
+        {
+            if (postId == null)
+                throw new System.ArgumentNullException("postId");
+
+            var client_ = _httpClient;
+            var disposeClient_ = false;
+            try
+            {
+                using (var request_ = new System.Net.Http.HttpRequestMessage())
+                {
+                    request_.Method = new System.Net.Http.HttpMethod("GET");
+                    request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
+
+                    var urlBuilder_ = new System.Text.StringBuilder();
+                
+                    // Operation Path: "api/contentdesigner/posts/{postId}/events"
+                    urlBuilder_.Append("api/contentdesigner/posts/");
+                    urlBuilder_.Append(System.Uri.EscapeDataString(ConvertToString(postId, System.Globalization.CultureInfo.InvariantCulture)));
+                    urlBuilder_.Append("/events");
+                    urlBuilder_.Append('?');
+                    if (after != null)
+                    {
+                        urlBuilder_.Append(System.Uri.EscapeDataString("after")).Append('=').Append(System.Uri.EscapeDataString(ConvertToString(after, System.Globalization.CultureInfo.InvariantCulture))).Append('&');
+                    }
+                    urlBuilder_.Length--;
+
+                    PrepareRequest(client_, request_, urlBuilder_);
+
+                    var url_ = urlBuilder_.ToString();
+                    request_.RequestUri = new System.Uri(url_, System.UriKind.RelativeOrAbsolute);
+
+                    PrepareRequest(client_, request_, url_);
+
+                    var response_ = await client_.SendAsync(request_, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    var disposeResponse_ = true;
+                    try
+                    {
+                        var headers_ = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IEnumerable<string>>();
+                        foreach (var item_ in response_.Headers)
+                            headers_[item_.Key] = item_.Value;
+                        if (response_.Content != null && response_.Content.Headers != null)
+                        {
+                            foreach (var item_ in response_.Content.Headers)
+                                headers_[item_.Key] = item_.Value;
+                        }
+
+                        ProcessResponse(client_, response_);
+
+                        var status_ = (int)response_.StatusCode;
+                        if (status_ == 200)
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<FeedPage>(response_, headers_, cancellationToken).ConfigureAwait(false);
                             if (objectResponse_.Object == null)
                             {
                                 throw new ContentDesignerApiException("Response was null which was not expected.", status_, objectResponse_.Text, headers_, null);
@@ -2711,6 +2897,9 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         [System.Text.Json.Serialization.JsonPropertyName("culture")]
         public string? Culture { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("design")]
+        public DesignViews? Design { get; set; } = default!;
+
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
         [System.Text.Json.Serialization.JsonExtensionData]
@@ -2819,6 +3008,9 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         [System.Text.Json.Serialization.JsonPropertyName("problems")]
         [System.ComponentModel.DataAnnotations.Required]
         public System.Collections.Generic.IReadOnlyList<DesignProblem> Problems { get; set; } = new System.Collections.Generic.List<DesignProblem>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("jsonLd")]
+        public string? JsonLd { get; set; } = default!;
 
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
@@ -2979,6 +3171,76 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         [System.Text.Json.Serialization.JsonPropertyName("views")]
         [System.ComponentModel.DataAnnotations.Required]
         public DesignViews Views { get; set; } = new DesignViews();
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class FeedEvent
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public long Id { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("type")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Type { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("postId")]
+        public int? PostId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("contentId")]
+        public string? ContentId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("version")]
+        public int Version { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("revision")]
+        public int? Revision { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("stage")]
+        public string? Stage { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("by")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string By { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("at")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public System.DateTimeOffset At { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class FeedPage
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("events")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.IReadOnlyList<FeedEvent> Events { get; set; } = new System.Collections.Generic.List<FeedEvent>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("last")]
+        public long Last { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("more")]
+        public bool More { get; set; } = default!;
 
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
@@ -3360,6 +3622,156 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
     }
 
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RenderAsset
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("url")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Url { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("width")]
+        public int? Width { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("height")]
+        public int? Height { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("encodingFormat")]
+        public string? EncodingFormat { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RenderBlock
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Id { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("nodeId")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string NodeId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldKey")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string FieldKey { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldVersion")]
+        public int FieldVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("content")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public JsonElement Content { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("style")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public JsonElement Style { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("children")]
+        public System.Collections.Generic.IReadOnlyList<RenderBlock>? Children { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RenderDocument
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Kind { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("culture")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Culture { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Title { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("root")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public JsonElement Root { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("contents")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.IReadOnlyList<RenderBlock> Contents { get; set; } = new System.Collections.Generic.List<RenderBlock>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("direction")]
+        public string? Direction { get; set; } = "ltr";
+
+        [System.Text.Json.Serialization.JsonPropertyName("description")]
+        public string? Description { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("canonicalUrl")]
+        public string? CanonicalUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("ampUrl")]
+        public string? AmpUrl { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("jsonLd")]
+        public string? JsonLd { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("values")]
+        public System.Collections.Generic.IDictionary<string, RenderValue>? Values { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("assets")]
+        public System.Collections.Generic.IDictionary<string, RenderAsset>? Assets { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class RenderValue
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Kind { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        public string? Label { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("multiple")]
+        public bool? Multiple { get; set; } = false;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
     public partial class SaveAsTemplateRequest
     {
 
@@ -3489,6 +3901,180 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         [System.Runtime.Serialization.EnumMember(Value = @"Amp")]
         Amp = 3,
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class WorkspaceContent
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("contentId")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string ContentId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("nodeId")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string NodeId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldKey")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string FieldKey { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldVersion")]
+        public int FieldVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldLabel")]
+        public string? FieldLabel { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("order")]
+        public int Order { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("required")]
+        public bool Required { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("stage")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Stage { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("sectionId")]
+        public string? SectionId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("assigneeId")]
+        public string? AssigneeId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("revision")]
+        public int Revision { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("acceptedRevision")]
+        public int? AcceptedRevision { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("pinnedRevision")]
+        public int? PinnedRevision { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("reviewNote")]
+        public string? ReviewNote { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("drift")]
+        public bool Drift { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class WorkspaceDto
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("post")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public WorkspacePost Post { get; set; } = new WorkspacePost();
+
+        [System.Text.Json.Serialization.JsonPropertyName("contents")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.IReadOnlyList<WorkspaceContent> Contents { get; set; } = new System.Collections.Generic.List<WorkspaceContent>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("document")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public RenderDocument Document { get; set; } = new RenderDocument();
+
+        [System.Text.Json.Serialization.JsonPropertyName("kindValues")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.IReadOnlyList<WorkspaceValue> KindValues { get; set; } = new System.Collections.Generic.List<WorkspaceValue>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("fieldStyles")]
+        [System.ComponentModel.DataAnnotations.Required]
+        public System.Collections.Generic.IDictionary<string, System.Collections.Generic.IDictionary<string, System.Collections.Generic.IReadOnlyList<string>>> FieldStyles { get; set; } = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.IDictionary<string, System.Collections.Generic.IReadOnlyList<string>>>();
+
+        [System.Text.Json.Serialization.JsonPropertyName("design")]
+        public PostDesignDto? Design { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class WorkspacePost
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("id")]
+        public int Id { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("publicId")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string PublicId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Title { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Kind { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("kindVersion")]
+        public int KindVersion { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("version")]
+        public int Version { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("permalink")]
+        public string? Permalink { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class WorkspaceValue
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("key")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Key { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Label { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("kind")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Kind { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("required")]
+        public bool Required { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("schemaProperty")]
+        public string? SchemaProperty { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
 
     }
 

@@ -90,6 +90,11 @@ public sealed class DesignWorkbench(
     /// </summary>
     public async Task<IReadOnlyList<DesignProblem>> CheckAsync(DesignViews views, int designKindVersion, ContentPost post,
         IReadOnlyCollection<ViewKind>? only, string? culture, CancellationToken ct)
+        => (await CheckWithJsonLdAsync(views, designKindVersion, post, only, culture, ct)).Problems;
+
+    /// <summary><see cref="CheckAsync"/>, with the JSON-LD DynamicFields built (null when it built none): the studio's JSON-LD panel.</summary>
+    public async Task<(IReadOnlyList<DesignProblem> Problems, string? JsonLd)> CheckWithJsonLdAsync(DesignViews views, int designKindVersion,
+        ContentPost post, IReadOnlyCollection<ViewKind>? only, string? culture, CancellationToken ct)
     {
         var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
         var context = await ContextAsync(views, post, postFields, ct);
@@ -99,7 +104,7 @@ public sealed class DesignWorkbench(
         foreach (var issue in await fields.ValidateAsync(tree, ct))
             problems.Add(new(null, ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message));
 
-        var jsonLd = await fields.BuildJsonLdAsync(tree, CanonicalUrl(post.Permalink), culture, Assets(post.Document, postFields), ct);
+        var jsonLd = await fields.BuildJsonLdAsync(tree, JsonLdUrl(post.Permalink), culture, Assets(post.Document, postFields), ct);
         if (jsonLd is null)
             problems.Add(new(null, ProblemSeverity.Warning, Codes.JsonLd, "", "DynamicFields built no JSON-LD for the post."));
         else
@@ -112,7 +117,7 @@ public sealed class DesignWorkbench(
             foreach (var issue in amp.AmpIssues)
                 problems.Add(new(ViewKind.Amp, ProblemSeverity.Error, Codes.Amp, "", $"AMP ({issue.Rule}): {issue.Message}"));
         }
-        return problems;
+        return (problems, jsonLd?.JsonLd);
     }
 
     public static IEnumerable<string> MissingEssentials(string jsonLd)
@@ -130,6 +135,13 @@ public sealed class DesignWorkbench(
         permalink is null ? null
         : Uri.TryCreate(permalink, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? permalink // on Unix "/x" is an absolute file URI
         : options.Value.SiteBaseUrl.TrimEnd('/') + "/" + permalink.TrimStart('/');
+
+    /// <summary>
+    /// The canonical URL for JSON-LD: only an absolute http(s) address, which DynamicFields requires. Without
+    /// <c>SiteBaseUrl</c> a permalink stays relative, and the JSON-LD then has no url rather than failing.
+    /// </summary>
+    public string? JsonLdUrl(string? permalink) =>
+        CanonicalUrl(permalink) is { } url && Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? url : null;
 
     public string AmpUrl(string publicId) => options.Value.AmpUrlTemplate.Replace("{publicId}", Uri.EscapeDataString(publicId), StringComparison.Ordinal);
 
@@ -217,7 +229,7 @@ public sealed class DesignWorkbench(
     public async Task<RenderedPage> RenderDraftAsync(DesignViews views, ContentPost post, bool amp, string? culture, CancellationToken ct)
     {
         var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
-        var jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), CanonicalUrl(post.Permalink), culture,
+        var jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), JsonLdUrl(post.Permalink), culture,
             Assets(post.Document, postFields), ct);
         return await RenderAsync(views, Document(post, postFields, culture, jsonLd?.JsonLd), amp, ct);
     }
@@ -233,7 +245,7 @@ public sealed class DesignWorkbench(
         try
         {
             postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
-            jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), CanonicalUrl(post.Permalink), culture,
+            jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), JsonLdUrl(post.Permalink), culture,
                 Assets(post.Document, postFields), ct);
         }
         catch (ExternalApiException) { }
