@@ -94,7 +94,10 @@
 .cd-studio--focus { position: fixed; inset: 0; z-index: 1300; height: auto; min-height: 0; padding: 8px; background: var(--mud-palette-background); }
 
 /* The canvas's root block (the page element): a drop target for regions at the top. */
+.cd-studio:focus { outline: none; }
 .cd-page-root { min-height: 100%; }
+/* Embeds (a video's iframe) would take the pointer: on the canvas a block is selected and dragged, not played. */
+.cd-page-root :is(iframe, video, audio, object, embed) { pointer-events: none; }
 
 /* Palette items (Toolbox, tray, Explorer, library): drag them onto the canvas. */
 .cd-palette { cursor: grab; }

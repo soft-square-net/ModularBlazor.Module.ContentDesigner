@@ -22,7 +22,8 @@
 
 <PageHeader Title="@Title" />
 
-<div class="cd-studio @(_focus ? "cd-studio--focus" : "")" @onkeydown="OnKeyAsync">
+@* tabindex -1: a click on plain content focuses the studio, so its keys (Esc, Ctrl+Shift+F) reach it, not the body. *@
+<div class="cd-studio @(_focus ? "cd-studio--focus" : "")" tabindex="-1" @ref="_root" @onkeydown="OnKeyAsync">
   <div class="cd-studio__bar" role="toolbar" aria-label="Studio">
     <a class="mud-button-root mud-button-text mud-button-small" href="contentdesigner">← Designs</a>
     <strong class="cd-studio__title" title="@_session?.Workspace?.Post.PublicId">@Title</strong>
@@ -124,6 +125,7 @@
 
   private StudioSession? _session;
   private ElementReference _host;
+  private ElementReference _root;
   private IJSObjectReference? _dock;
   private string _dockPanels = "";
   private bool _noPanels;
@@ -179,6 +181,11 @@
       await JS.InvokeVoidAsync("history.replaceState", null, "", address);
     }
     catch (JSException) { } // the address is a convenience; focus mode works without it
+    if (focus)
+    {
+      try { await _root.FocusAsync(preventScroll: true); } // so Esc leaves at once
+      catch (JSException) { }
+    }
   }
 
   private Task OnKeyAsync(KeyboardEventArgs e)
@@ -190,7 +197,13 @@
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender) await MountDockAsync();
+    if (!firstRender) return;
+    await MountDockAsync();
+    if (_focus)
+    {
+      try { await _root.FocusAsync(preventScroll: true); } // opened with ?focus=1: Esc leaves
+      catch (JSException) { }
+    }
   }
 
   private void OnSessionChanged() => InvokeAsync(StateHasChanged);

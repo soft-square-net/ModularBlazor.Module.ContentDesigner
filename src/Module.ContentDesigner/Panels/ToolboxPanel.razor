@@ -18,7 +18,7 @@
     var view = Session.View;
     var target = TargetRegion(design);
     <p class="cd-hint">
-      Drag onto the canvas, or click to add @(target is null ? "at the top" : $"to {target}").
+      Drag onto the canvas, or click to add @(target is null ? "at the end of the page" : $"to the end of {target}").
     </p>
 
     <section class="cd-section">
@@ -27,7 +27,7 @@
         @foreach (var kind in RegionKinds)
         {
           <li class="cd-palette" role="button" tabindex="0" @attributes="Palette.Attributes(Palette.Region(kind))"
-              title="@($"Drag onto the canvas, or click to add a {kind.ToLowerInvariant()} {(target is null ? "at the top" : $"in {target}")}")"
+              title="@($"Drag onto the canvas, or click to add a {kind.ToLowerInvariant()} {(target is null ? "at the end of the page" : $"in {target}")}")"
               @onclick="() => AddRegion(kind, target)" @onkeydown="e => Key(e, () => AddRegion(kind, target))">
             <span class="cd-palette__icon" aria-hidden="true">@(kind == "Section" ? "▭" : kind == "Row" ? "☰" : "▥")</span> @kind
           </li>

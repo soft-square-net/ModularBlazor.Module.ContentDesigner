@@ -7,9 +7,10 @@ them in four views: Mobile, Tablet, Desktop and AMP. It checks each view against
 automatically, and saves block and document templates. See [docs/design-plan.md](docs/design-plan.md) for the agreed
 plan and its phases.
 
-> **Status: phase 5, studio v1.** The designer's model, checks, templates, rendering (HTML and AMP), API and the
-> studio (`/contentdesigner/studio/{postId}`, which arranges a post in its four views) are in. See
-> [docs/studio-v1-plan.md](docs/studio-v1-plan.md) for what v1 holds and what it leaves for later.
+> **Status: phase 7, studio v2.** The designer's model, checks, templates, rendering (HTML and AMP), API and the
+> studio (`/contentdesigner/studio/{postId}`, which arranges a post in its four views) are in, with drag and drop, the
+> block template library, AMP checks per block and focus mode. See [docs/studio-v1-plan.md](docs/studio-v1-plan.md)
+> and [docs/studio-v2-plan.md](docs/studio-v2-plan.md).
 
 ## Layout
 
@@ -67,7 +68,7 @@ header or the token's tenant). Edits send the `version` they read and get 409 if
 | `POST /posts/{postId}/design/apply-template` `{ version, templateId, views? }` | `arrange` | Take a document template's views (all, or those named) |
 | `GET /posts/{postId}/workspace?culture=` | `read` | What the studio opens: the post, its contents (stage, section, assignee, revisions, drift), the render document, the kind's values and field styles, the design |
 | `GET /posts/{postId}/events?after=` | `read` | The post's change feed in Content, after an event id (the studio's hot reload) |
-| `POST /posts/{postId}/design/check` `{ views?, culture?, design? }` | `read` | The checks: errors and warnings, per view, and the JSON-LD; of the unsaved views when `design` is sent |
+| `POST /posts/{postId}/design/check` `{ views?, culture?, design? }` | `read` | The checks: errors and warnings, per view, the JSON-LD and the AMP CSS size; of the unsaved views when `design` is sent. An AMP issue a block causes names its placement |
 | `POST /posts/{postId}/design/preview` `{ amp, culture?, views? }` | `read` | The draft, or unsaved views, as the page or the AMP page (with its AMP issues) |
 | `POST /posts/{postId}/design/publish` `{ version, culture? }` | `publish` | Publish once the checks pass; 409 lists the errors |
 | `POST /posts/{postId}/design/unpublish` `{ version }` | `publish` | Take the published design down |
@@ -78,7 +79,10 @@ header or the token's tenant). Edits send the `version` they read and get 409 if
 | `POST /posts/{postId}/design/save-as-template` `{ name, description?, makeDefault }` | `templates` | Save the draft as a document template |
 | `GET /block-templates?field=&view=`, `GET /block-templates/{id}` | `read` | Block templates |
 | `POST /block-templates`, `PUT` and `DELETE /block-templates/{id}` | `templates` | Create, edit, delete |
-| `POST /posts/{postId}/design/views/{view}/save-block-as-template` `{ part, name, withContent }` | `templates` | Save how a content shows in a view as a block template |
+| `GET /library?fieldKey=&stage=&sectionId=&skip=&take=` | `read` | Content's shared library: contents to add to a post |
+| `GET /library/{contentId}` | `read` | One library content with its render block (the picker's preview) |
+| `POST /posts/{postId}/contents` `{ postVersion, contentId, index?, required, culture? }` | `arrange` | Add an existing content to the post (not required by default); returns the workspace; 409 if the post moved on |
+| `POST /posts/{postId}/design/views/{view}/save-block-as-template` `{ part, name, withContent, design? }` | `templates` | Save how a content shows in a view as a block template (from the unsaved views when `design` is sent) |
 | `GET /render/{publicId}?culture=` | anonymous | The published post as its responsive HTML page |
 | `GET /render/{publicId}/amp?culture=` | anonymous | The published post as its AMP page |
 
@@ -143,20 +147,26 @@ sets the page context `content.post` to the post id; every pane finds the open s
 
 | Pane | Where | What it does |
 | --- | --- | --- |
-| Designer | centre | MudCanvas over the Rendering components: the post as published, live, in the current view's device frame. Click selects; Alt+↑/↓ reorders; Delete takes a part out; the handle sets the span; Ctrl+Z / Ctrl+Y |
-| Output | centre | The server's responsive or AMP HTML of the unsaved views, with the AMP issues and CSS size |
-| Contents | left | The contents tray: each content's stage, section, assignee, review note, drift and where it shows; the post's values |
+| Designer | centre | MudCanvas over the Rendering components: the post as published, live, in the current view's device frame. Click selects; drag moves a block before, after or into a region (across regions too); Alt+↑/↓ reorders; Delete takes a part out; the handle sets the span; Ctrl+Z / Ctrl+Y |
+| Output | centre | The server's responsive or AMP HTML of the unsaved views, again a second after each edit; the AMP CSS against its budget; an AMP issue a block causes selects it |
+| Contents | left | The contents tray: each content's stage, section, assignee, review note, drift and where it shows; the post's values. Rows drag onto the canvas; "Add existing content…" opens the library picker |
 | Structure | left | The region tree of the current view: add sections, rows and columns; place what is not placed |
-| Properties | right | The view's inheritance (give it its own design, or inherit another); for the selection: region, order, span, hidden, tokens, copy to another view, take it out |
-| Templates | right | The kind's document templates: apply (all views or the current one), make default, save this design as one |
+| Toolbox | left | What can go on the canvas in this view: new regions, parts not placed, and the block templates of this view; drag one in, or click to add it to the selected region |
+| Explorer | left | The kind's document templates (apply, make default, save this design as one) and the block templates by field and view (rename, edit inner parts, delete, apply, drag onto a block) |
+| Properties | right | The view's inheritance (give it its own design, or inherit another); for the selection: region, order, span, hidden, tokens, its block template (pick, detach keeping its look, save as one, for this view or all four), copy to another view, take it out |
 | JSON-LD | right | The post's JSON-LD, from the last check |
-| Problems | bottom | The checks of the unsaved views; a problem selects what it names |
+| Problems | bottom | The checks of the unsaved views, filtered by view, with the AMP CSS budget; a problem selects what it names |
 | Activity | bottom | The post's change feed; the studio polls it every 4 seconds while visible and reloads what the sections change |
 
 Views only reorder, hide and restyle one content tree: Mobile, Tablet and Desktop share their regions, so a structural
 edit in one applies to every web view with a design of its own; AMP has its own tree. A view that inherits another is
 given its own copy on its first edit. Edits stay in the browser (undo 50 deep) until Save; Publish saves first.
 Styling is editorial tokens only.
+
+The library picker is a floating panel: filter Content's shared library by block field, stage (accepted by default) and
+section, preview a content, and add it (into the selected region, else shown through "items") or drag it onto the
+canvas. Focus mode (the toolbar's Focus button, or Ctrl+Shift+F; Esc leaves) fills the window with the same studio, so
+unsaved edits and undo stay; `?focus=1` opens the studio in it.
 
 ## Building
 

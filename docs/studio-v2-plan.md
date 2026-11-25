@@ -153,3 +153,25 @@ I'll report what I could not exercise in the browser.
 4. Explorer (moves the Templates pane), Properties' block templates.
 5. Problems/Output AMP, focus mode, the library dialog.
 6. Playground walkthrough (section 5), README and design plan (phase 7 status), commit, push, PR against main (not merged).
+
+## 8. Verified in the playground (acme-admin, post 1)
+
+- Drag and drop: a Toolbox part into an empty section; a placed block across regions; a block out of "items" (a
+  paragraph, the quote, the video) reordered within main; a new Section dropped before main (a top-level section).
+- The depth rule: Row → Column → Row nest, and the next Column is refused ("Regions nest at most 4 deep").
+- Block templates: save from the selection for all four views (with a token), apply from the Toolbox, detach (the
+  token stays), rename, save inner parts, delete with confirm; a paragraph template dropped on a quote is refused.
+- AMP: the Problems view filter and counts, the CSS budget meter in Problems and Output ("AMP rules pass").
+- Focus mode: the button, Ctrl+Shift+F, Esc, `?focus=1` on load; unsaved edits (Save●) survive each toggle.
+- The library picker: filters, preview, "Add to the post" into the selected region (not required), drag a row onto
+  the canvas (attached, then placed before the headline), the unsaved edits kept; then Save.
+
+Found and fixed while verifying: an embed's iframe took the pointer (a video could not be selected or dragged), and Esc
+did nothing after a click on plain content (the key went to the body).
+
+Not verified in the browser: an AMP issue linked to its block (the playground's posts break no AMP rule; the unit tests
+cover the attribution); the 409 when the post moved on during an attach; the budget warning near 75,000 bytes.
+
+Known limits: a block shown through "items" is placed where "items" is when it is dragged or given a template, so it
+can move ahead of the other "items" contents; the Toolbox and Explorer tabs share the left pane with Contents and
+Structure and are clipped in a narrow pane until it is widened (MudDock's tab strip).
