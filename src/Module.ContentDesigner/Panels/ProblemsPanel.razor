@@ -1,8 +1,9 @@
 @inherits StudioPanelBase
 @*
   The checks of the views as edited (POST .../design/check with the unsaved views): the design rules, DynamicFields'
-  validation, the JSON-LD essentials and the AMP page. Errors block publishing; warnings do not. A problem that names a
-  placement or a region selects it, in its view.
+  validation, the JSON-LD essentials and the AMP page (each AMP issue a block causes names that block). Errors block
+  publishing; warnings do not. A problem that names a placement or a region selects it, in its view. Filter by view;
+  the AMP page's CSS shows against AMP's limit.
 *@
 
 <div class="cd-panel cd-problems">
@@ -21,7 +22,25 @@
         <span class="cd-muted">(of the unsaved views)</span>
       }
     }
+    <span class="cd-studio__spacer"></span>
+    <span class="cd-filter" role="radiogroup" aria-label="Show the problems of">
+      @foreach (var (key, label) in Filters)
+      {
+        <button type="button" role="radio" aria-checked="@(_filter == key)"
+                class="mud-button-root mud-button-small @(_filter == key ? "mud-button-filled mud-button-primary" : "mud-button-text")"
+                @onclick="() => _filter = key">@label (@Count(key))</button>
+      }
+    </span>
   </div>
+  @if (Session?.Report?.AmpCssBytes is { } css)
+  {
+    var limit = Session.Report.AmpCssLimit is > 0 and var l ? l : 75_000;
+    var share = Math.Min(1.0, (double)css / limit);
+    <div class="cd-budget @(share >= 1 ? "is-over" : share >= 0.8 ? "is-near" : "")" title="AMP allows @limit.ToString("N0") bytes of custom CSS">
+      <span class="cd-budget__label">AMP CSS @css.ToString("N0") / @limit.ToString("N0") bytes</span>
+      <meter class="cd-budget__bar" min="0" max="@limit" low="@(limit * 8 / 10)" high="@limit" optimum="0" value="@css" aria-label="AMP CSS size"></meter>
+    </div>
+  }
 
   @if (Session?.Report is { } shown)
   {
@@ -30,7 +49,7 @@
       <p class="cd-ok">No problems.</p>
     }
     <ul class="cd-list">
-      @foreach (var problem in shown.Problems.OrderByDescending(p => p.Severity).ThenBy(p => p.View?.Value))
+      @foreach (var problem in shown.Problems.Where(Shows).OrderByDescending(p => p.Severity).ThenBy(p => p.View?.Value))
       {
         <li class="cd-list__item cd-problem cd-problem--@problem.Severity.ToString().ToLowerInvariant()" @onclick="() => Go(problem)">
           <span class="cd-problem__icon" aria-hidden="true">@(problem.Severity == ProblemSeverity.Error ? "✖" : "⚠")</span>
@@ -60,6 +79,17 @@
 </div>
 
 @code {
+  private static readonly (string Key, string Label)[] Filters =
+    [("", "All"), (Views.Mobile, "Mobile"), (Views.Tablet, "Tablet"), (Views.Desktop, "Desktop"), (Views.Amp, "AMP")];
+
+  private string _filter = "";
+
+  /// <summary>A problem of the whole design (no view) shows under every view.</summary>
+  private bool Shows(DesignProblem problem) => _filter.Length == 0 || problem.View is null || problem.View.Value.ToString() == _filter;
+
+  private int Count(string filter) =>
+    Session?.Report?.Problems.Count(p => filter.Length == 0 || p.View is null || p.View.Value.ToString() == filter) ?? 0;
+
   private Task CheckAsync() => Session?.CheckAsync() ?? Task.CompletedTask;
 
   /// <summary>Selects what a problem's path names: /{view}/placements/{n} or /{view}/regions/{n}.</summary>
