@@ -97,8 +97,12 @@ public sealed record FieldValueInfo(string Key, string Label, string Kind, bool 
 
 public sealed record FieldStyleInfo(string Key, IReadOnlyList<string> Values, bool Responsive);
 
-/// <summary>A published field version (DynamicFields' <c>GET /fields/{key}/versions/{n}</c>): its values and style tokens.</summary>
-public sealed record FieldVersionInfo(string Key, int Version, string SchemaType, IReadOnlyList<FieldValueInfo> Values, IReadOnlyList<FieldStyleInfo> Styles);
+/// <summary>
+/// A published field version (DynamicFields' <c>GET /fields/{key}/versions/{n}</c>): its values and style tokens, and
+/// its title ("Video"), when the snapshot has one.
+/// </summary>
+public sealed record FieldVersionInfo(string Key, int Version, string SchemaType, IReadOnlyList<FieldValueInfo> Values, IReadOnlyList<FieldStyleInfo> Styles,
+    string? Title = null);
 
 public sealed record ContentIssue(string Path, string Message);
 

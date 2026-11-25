@@ -16,7 +16,7 @@ public sealed record WorkspaceBlockValue(string Key, string Label);
 
 /// <summary>
 /// One content of the post for the studio's Contents tray: Content's view of it (stage, section, assignee, revisions),
-/// and the label of its block field.
+/// and the label of its block field (the field's title, or a label made from its key when the snapshot has none).
 /// </summary>
 public sealed record WorkspaceContent(
     string ContentId,
@@ -80,7 +80,7 @@ public sealed class GetWorkspaceHandler(IReadRepository<PostDesign> designs, ICo
             return new WorkspaceDto(
                 new WorkspacePost(post.Id, post.PublicId, post.Title, post.Kind, post.KindVersion, post.Version, post.Permalink),
                 [.. post.Contents.Select(c => new WorkspaceContent(c.ContentId, c.NodeId, c.FieldKey, c.FieldVersion,
-                    Label(c.FieldKey),
+                    postFields.Block(c.FieldKey, c.FieldVersion)?.Title ?? Label(c.FieldKey),
                     c.Order, c.Required, c.Stage, c.SectionId, c.AssigneeId, c.Revision, c.AcceptedRevision, c.PinnedRevision,
                     c.ReviewNote, c.Drift))],
                 workbench.Document(post, postFields, query.Culture, null),

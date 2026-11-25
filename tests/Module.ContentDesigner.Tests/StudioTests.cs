@@ -129,3 +129,86 @@ public class StudioSessionTests
         session.CanUndo.ShouldBeTrue();
     }
 }
+
+public class StudioReportTests
+{
+    /// <summary>Answers every call with a report of one warning, like POST .../design/check.</summary>
+    private sealed class CheckHandler : HttpMessageHandler
+    {
+        public int Calls { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{ "valid": true, "errors": 0, "warnings": 1, "problems": [] }""", System.Text.Encoding.UTF8, "application/json")
+            });
+        }
+    }
+
+    private static (StudioSession Session, CheckHandler Handler) Open()
+    {
+        var handler = new CheckHandler();
+        var client = new WebApi.Modules.ContentDesigner.Client.ContentDesignerClient(new HttpClient(handler) { BaseAddress = new Uri("http://localhost/") });
+        var session = new StudioSession(7, () => client, e => e.Message, (_, _) => ValueTask.CompletedTask);
+        var views = new DViews(
+            new DView([new DRegion("body", "Section")], [new DPlacement("content:a", "body", 0)]),
+            DView.Inherit(Views.Mobile), DView.Inherit(Views.Mobile), DView.Inherit(Views.Mobile));
+        session.TakeDesign(new WebApi.Modules.ContentDesigner.Client.PostDesignDto { PostId = 7, Version = 1, Draft = StudioJson.ToApi(views) }, clearHistory: true);
+        return (session, handler);
+    }
+
+    [Fact]
+    public async Task An_edit_after_a_check_marks_the_report_out_of_date()
+    {
+        var (session, handler) = Open();
+        session.ReportStale.ShouldBeFalse(); // nothing checked yet
+
+        (await session.CheckAsync()).ShouldBeTrue();
+        handler.Calls.ShouldBe(1);
+        session.Report.ShouldNotBeNull().Warnings.ShouldBe(1);
+        session.ReportStale.ShouldBeFalse();
+
+        session.Edit(v => DesignEditor.SetHidden(v, Views.Mobile, "content:a", true)).ShouldBeTrue();
+        session.ReportStale.ShouldBeTrue();
+
+        session.Undo(); // back to the views that were checked
+        session.ReportStale.ShouldBeFalse();
+
+        session.Redo();
+        (await session.CheckAsync()).ShouldBeTrue();
+        session.ReportStale.ShouldBeFalse();
+    }
+}
+
+public class StudioIconsTests
+{
+    [Fact]
+    public void A_lucide_name_becomes_svg_markup_for_the_dock()
+    {
+        var svg = StudioIcons.Svg("layers");
+        svg.ShouldStartWith("<svg ");
+        svg.ShouldContain("lucide-layers");
+        svg.ShouldContain("<path ");
+    }
+
+    [Theory]
+    [InlineData("layout-template")]
+    [InlineData("code")]
+    [InlineData("layers")]
+    [InlineData("list-tree")]
+    [InlineData("sliders-horizontal")]
+    [InlineData("shapes")]
+    [InlineData("folder-tree")]
+    [InlineData("braces")]
+    [InlineData("circle-alert")]
+    [InlineData("activity")]
+    public void Every_studio_panel_icon_is_carried(string name) => StudioIcons.Svg(name).ShouldNotBeEmpty(); // StudioPanels.cs
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-an-icon")]
+    public void An_unknown_icon_draws_nothing(string? name) => StudioIcons.Svg(name).ShouldBe("");
+}

@@ -3,7 +3,7 @@
   The checks of the views as edited (POST .../design/check with the unsaved views): the design rules, DynamicFields'
   validation, the JSON-LD essentials and the AMP page (each AMP issue a block causes names that block). Errors block
   publishing; warnings do not. A problem that names a placement or a region selects it, in its view. Filter by view;
-  the AMP page's CSS shows against AMP's limit.
+  the AMP page's CSS shows against AMP's limit. An edit (or a culture change) after a Check marks the report out of date.
 *@
 
 <div class="cd-panel cd-problems">
@@ -17,7 +17,11 @@
       <span class="@(report.Valid ? "cd-ok" : "cd-error")" role="status">
         @(report.Valid ? "Ready to publish" : $"{report.Errors} error(s)")@(report.Warnings > 0 ? $", {report.Warnings} warning(s)" : "")
       </span>
-      @if (Session.Dirty)
+      @if (Session.ReportStale)
+      {
+        <span class="cd-warn" role="status">Out of date: the design changed since this check. Check again.</span>
+      }
+      else if (Session.Dirty)
       {
         <span class="cd-muted">(of the unsaved views)</span>
       }
@@ -36,7 +40,7 @@
   {
     var limit = Session.Report.AmpCssLimit is > 0 and var l ? l : 75_000;
     var share = Math.Min(1.0, (double)css / limit);
-    <div class="cd-budget @(share >= 1 ? "is-over" : share >= 0.8 ? "is-near" : "")" title="AMP allows @limit.ToString("N0") bytes of custom CSS">
+    <div class="cd-budget @(share >= 1 ? "is-over" : share >= 0.8 ? "is-near" : "") @(Session.ReportStale ? "is-stale" : "")" title="AMP allows @limit.ToString("N0") bytes of custom CSS">
       <span class="cd-budget__label">AMP CSS @css.ToString("N0") / @limit.ToString("N0") bytes</span>
       <meter class="cd-budget__bar" min="0" max="@limit" low="@(limit * 8 / 10)" high="@limit" optimum="0" value="@css" aria-label="AMP CSS size"></meter>
     </div>
@@ -48,7 +52,7 @@
     {
       <p class="cd-ok">No problems.</p>
     }
-    <ul class="cd-list">
+    <ul class="cd-list @(Session.ReportStale ? "is-stale" : "")">
       @foreach (var problem in shown.Problems.Where(Shows).OrderByDescending(p => p.Severity).ThenBy(p => p.View?.Value))
       {
         <li class="cd-list__item cd-problem cd-problem--@problem.Severity.ToString().ToLowerInvariant()" @onclick="() => Go(problem)">
