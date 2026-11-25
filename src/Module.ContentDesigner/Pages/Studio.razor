@@ -7,12 +7,17 @@
 @inject IPageContext PageContext
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IServiceProvider Services
+@using soft.square.net.ModularBlazor.Abstractions.Live
 
 @*
   The designer studio of one post: a MudDock workspace whose panes are dock panels (the dock-panel contract), the
   studio's own and those other modules add for "contentdesigner". The page owns the session (the post, the views as
   edited, undo, the checks); every pane finds it by the post id the page puts in the page context ("content.post").
-  While the page is open and visible it polls the post's change feed in Content and reloads what the sections change.
+  Hot reload (StudioHotReload): the page listens on Content's live topic for the post (content:post:{id}) and, on each
+  message, reads the post's change feed and reloads what the sections changed; the feed also catches up after a reconnect
+  or a gap. Without a live channel, while it is not connected, or when the topic is refused, it polls the feed every 4 s
+  while the page is visible.
 
   Focus mode (the Focus button, Ctrl+Shift+F; Esc leaves it): the studio fills the window over the layout's chrome, as a
   fixed frame, so it works whatever layout the page has (no layout fills the "blank" role yet). It is a toggle on this
@@ -63,6 +68,14 @@
     </select>
     <input class="cd-input cd-input--short" aria-label="Culture" placeholder="culture" value="@_session?.Culture"
            disabled="@(_session is null)" @onchange="e => _session!.SetCultureAsync(e.Value as string)" />
+
+    @if (_reload is { } reload)
+    {
+      <span class="cd-tag @(reload.Mode == StudioSync.Live ? "cd-tag--ok" : "")"
+            title="@(reload.Mode == StudioSync.Live ? "Changes to the contents arrive live"
+                    : reload.Refused is { } refused ? $"Live updates are not available for this post ({refused}): checking for changes every few seconds"
+                    : "Checking for changes every few seconds")">@(reload.Mode == StudioSync.Live ? "live" : "polling")</span>
+    }
 
     <span class="cd-studio__spacer"></span>
 
@@ -119,7 +132,6 @@
 
 @code {
   private const string LayoutKey = "contentdesigner.studio.layout.v2"; // v2: Toolbox and Explorer, no Templates pane
-  private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(4);
 
   [Parameter] public int PostId { get; set; }
 
@@ -130,6 +142,7 @@
   private string _dockPanels = "";
   private bool _noPanels;
   private CancellationTokenSource? _poll;
+  private StudioHotReload? _reload;
   private int _openedFor;
 
   private bool _focus;
@@ -149,8 +162,14 @@
 
     if (await _session.OpenAsync())
     {
+      var session = _session;
       _poll = new CancellationTokenSource();
-      _ = PollAsync(_session, _poll.Token);
+      // Optional: a host without the live hub has no channel, and the studio polls.
+      _reload = new StudioHotReload(PostId, session.CatchUpAsync, () => session.LastEvent,
+        Services.GetService(typeof(ILiveChannel)) as ILiveChannel, HiddenAsync);
+      _reload.Changed += OnSessionChanged;
+      _ = _reload.RunAsync(_poll.Token);
+      await _reload.StartAsync(_poll.Token);
     }
   }
 
@@ -277,23 +296,6 @@
 
   // ───────────── hot reload ─────────────
 
-  /// <summary>Reads the post's change feed every few seconds while the page is visible.</summary>
-  private async Task PollAsync(StudioSession session, CancellationToken ct)
-  {
-    using var timer = new PeriodicTimer(PollEvery);
-    try
-    {
-      while (await timer.WaitForNextTickAsync(ct))
-      {
-        if (await HiddenAsync()) continue;
-        try { await session.PollAsync(ct); }
-        catch (OperationCanceledException) { throw; }
-        catch (Exception) { /* the next tick tries again; the session shows its error */ }
-      }
-    }
-    catch (OperationCanceledException) { }
-  }
-
   private async Task<bool> HiddenAsync()
   {
     try { return await JS.GetValueAsync<bool>("document.hidden"); }
@@ -307,11 +309,16 @@
     _poll?.Cancel();
     _poll?.Dispose();
     _poll = null;
+    if (_reload is not null)
+    {
+      _reload.Changed -= OnSessionChanged;
+      await _reload.DisposeAsync();
+      _reload = null;
+    }
     if (_session is null) return;
     _session.Changed -= OnSessionChanged;
     StudioSessions.Remove(_session);
     _session = null;
-    await Task.CompletedTask;
   }
 
   public async ValueTask DisposeAsync()

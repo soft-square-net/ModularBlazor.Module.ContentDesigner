@@ -475,10 +475,11 @@ public sealed class StudioSession
     // ───────────── hot reload ─────────────
 
     /// <summary>
-    /// Reads the post's change feed since the last event. When contents or the post changed, reloads the post (the design,
-    /// the edits and the selection stay) and checks again. Returns whether anything changed.
+    /// Reads the post's change feed since the last event (<c>?after=</c>). When contents or the post changed, reloads the
+    /// post (the design, the edits and the selection stay) and checks again. Returns whether anything changed.
+    /// <see cref="StudioHotReload"/> calls it on a live message, after a reconnect or a gap, and on each polling tick.
     /// </summary>
-    public async Task<bool> PollAsync(CancellationToken ct)
+    public async Task<bool> CatchUpAsync(CancellationToken ct)
     {
         if (Workspace is null) return false;
         FeedPage page;
@@ -496,7 +497,7 @@ public sealed class StudioSession
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            return false; // the next tick tries again; the toolbar shows nothing for a missed poll
+            return false; // the next nudge or tick tries again; the toolbar shows nothing for a missed read
         }
         if (events.Count == 0) return false;
 

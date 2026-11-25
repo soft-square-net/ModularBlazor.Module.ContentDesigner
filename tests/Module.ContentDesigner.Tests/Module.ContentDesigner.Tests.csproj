@@ -7,6 +7,11 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <!-- The client SDK the host provides to client modules (ILiveChannel for the hot reload tests). -->
+  <ItemGroup>
+    <PackageReference Include="soft.square.net.ModularBlazor.Abstractions" Version="$(ModularBlazorPlatformVersion)" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\src\Module.ContentDesigner\Module.ContentDesigner.csproj" />
     <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.Client\WebApi.Modules.ContentDesigner.Client.csproj" />
