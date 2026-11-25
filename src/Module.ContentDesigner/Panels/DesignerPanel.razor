@@ -8,8 +8,10 @@
   the canvas shows the post as published, live. The web views share one responsive page and the device frame's width
   picks the breakpoint (container queries); the AMP tab shows the AMP view's own arrangement.
 
-  Gestures: a click selects; Alt+↑/↓ reorders in the current view; Delete takes a part out of the views (an empty region
-  is removed); the bottom-right handle sets the span; Ctrl+Z / Ctrl+Y undo and redo. Drag and drop comes in phase 7.
+  Gestures: a click selects; drag a block or a region to move it (into another region too); drop items from the Toolbox,
+  the Contents tray or the library picker (palette items, data-block-new); Alt+↑/↓ reorders in the current view; Delete
+  takes a part out of the views (an empty region is removed); the bottom-right handle sets the span; Ctrl+Z / Ctrl+Y undo
+  and redo. The page element is the canvas's root block ("page"), so sections can be dropped between sections.
 *@
 
 <div class="cd-designer">
@@ -29,7 +31,10 @@
         <div class="mud-canvas__content">
           @if (_page is not null)
           {
-            <DesignBody Page="_page" Settings="_settings" />
+            <div class="cd-page-root" data-block-id="@DropPlanner.Page" data-block-type="page" data-block-label="Page"
+                 data-container="true" data-empty="@(_page.Children.Count == 0 ? "true" : null)">
+              <DesignBody Page="_page" Settings="_settings" />
+            </div>
           }
         </div>
       </div>
@@ -54,10 +59,7 @@
   protected override void OnInitialized()
   {
     base.OnInitialized();
-    // Assets are served by the gateway (the API's origin), not by the client's.
-    var api = HttpClients.CreateClient(HttpClientNames.WebApi).BaseAddress;
-    var template = new RenderSettings().AssetUrlTemplate;
-    if (api is not null) _settings = new RenderSettings { AssetUrlTemplate = new Uri(api, template.TrimStart('/')).ToString().Replace("%7Bid%7D", "{id}") };
+    _settings = RenderMapping.Settings(HttpClients.CreateClient(HttpClientNames.WebApi).BaseAddress);
   }
 
   protected override void OnSessionAttached() => Build();
@@ -89,7 +91,7 @@
         showHidden = Session.ShowHidden,
         dir = Session.Direction,
         lang = Session.Culture,
-        autoDraggable = false,
+        autoDraggable = true,
       }, _self);
       _creating = false;
       _told = (Session.View, Session.ShowHidden, Session.Direction, Session.Culture, null);
@@ -115,13 +117,17 @@
     switch (name)
     {
       case "select":
+        if (id == DropPlanner.Page) id = null; // the page is the canvas's root, not something to edit
         _told = _told with { Selected = id };
         Session.Select(id);
         break;
+      case "drop":
+        return Session.DropAsync(new CanvasDrop(
+          Str(payload, "kind") ?? "", Str(payload, "id"), Str(payload, "key"), Str(payload, "targetId"), Str(payload, "position")));
       case "move" when id is not null && payload.TryGetProperty("by", out var by):
         Session.Edit(v => DesignEditor.Move(v, view, id, by.GetInt32()), id);
         break;
-      case "delete" when id is not null:
+      case "delete" when id is not null && id != DropPlanner.Page:
         Session.Edit(v => DesignEditor.IsRegion(id)
           ? DesignEditor.RemoveRegion(v, view, DesignEditor.RegionId(id))
           : DesignEditor.Unplace(v, view, id));
@@ -137,6 +143,9 @@
     }
     return Task.CompletedTask;
   }
+
+  private static string? Str(JsonElement payload, string name) =>
+    payload.ValueKind == JsonValueKind.Object && payload.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
   public async ValueTask DisposeAsync()
   {

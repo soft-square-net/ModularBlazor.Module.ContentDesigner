@@ -1,8 +1,9 @@
 @inherits StudioPanelBase
 @*
   The selection in the current view: where it is (region; a structural change applies to every web view), its order,
-  span and hidden flag and its style tokens (this view only), and "copy to view". With nothing selected: the view
-  itself, inheriting another view or with a design of its own. Only theme tokens: no classes, no CSS.
+  span and hidden flag and its style tokens (this view only), its block template (a content: pick, detach, or save how it
+  looks as a new one), and "copy to view". With nothing selected: the view itself, inheriting another view or with a
+  design of its own. Only theme tokens: no classes, no CSS.
 *@
 
 <div class="cd-panel cd-properties">
@@ -116,6 +117,50 @@
         }
       </section>
 
+      @if (!isRegion && DesignEditor.IsContent(id) && Session.FieldOf(id[8..]) is { } field)
+      {
+        var options = Session.BlockTemplateList.Where(t => t.FieldKey == field && t.View?.ToString() == view).ToList();
+        var used = placement!.BlockTemplateId;
+        <section class="cd-section">
+          <h3 class="cd-section__title">Block template <span class="cd-muted">(@RenderMapping.Label(field), @Views.Label(view))</span></h3>
+          <div class="cd-row">
+            <label class="cd-label" for="cd-block-template">Template</label>
+            <select id="cd-block-template" class="cd-select" value="@(used?.ToString() ?? "")"
+                    @onchange="e => Session.Edit(v => DesignEditor.SetBlockTemplate(v, view, id, int.TryParse(e.Value as string, out var t) ? t : null))">
+              <option value="">(none)</option>
+              @foreach (var template in options)
+              {
+                <option value="@template.Id">@template.Name</option>
+              }
+              @if (used is { } missingId && options.All(t => t.Id != missingId))
+              {
+                <option value="@missingId">#@missingId (not found)</option>
+              }
+            </select>
+          </div>
+          @if (used is { } usedId)
+          {
+            <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Stop using the template; its tokens are copied onto the block"
+                    @onclick="() => Session.Edit(v => DesignEditor.DetachBlockTemplate(v, view, id, Session.BlockTemplate(usedId)?.Tokens is { } tokens ? new Dictionary<string, string>(tokens) : null))">
+              Detach (keep its look)
+            </button>
+          }
+          @if (options.Count == 0)
+          {
+            <p class="cd-hint">No @RenderMapping.Label(field).ToLowerInvariant() templates for this view yet.</p>
+          }
+
+          <form class="cd-form" @onsubmit="() => SaveBlockAsync(id)" @onsubmit:preventDefault>
+            <h4 class="cd-form__title">Save as block template</h4>
+            <input class="cd-input" aria-label="Template name" placeholder="Name" maxlength="200" @bind="_blockName" @bind:event="oninput" />
+            <label class="cd-check"><input type="checkbox" @bind="_blockAllViews" /> All four views (one template each)</label>
+            <label class="cd-check"><input type="checkbox" @bind="_blockWithValues" /> Keep its values</label>
+            <button type="submit" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+                    disabled="@(string.IsNullOrWhiteSpace(_blockName) || Session.Busy)">Save template</button>
+          </form>
+        </section>
+      }
+
       <section class="cd-section">
         <h3 class="cd-section__title">Copy to view</h3>
         <p class="cd-hint">Order, span, hidden and tokens of this @(isRegion ? "region" : "part"), from the @Views.Label(view) view.</p>
@@ -169,6 +214,16 @@
 </div>
 
 @code {
+  private string _blockName = "";
+  private bool _blockAllViews;
+  private bool _blockWithValues;
+
+  private async Task SaveBlockAsync(string part)
+  {
+    if (Session is null || string.IsNullOrWhiteSpace(_blockName)) return;
+    if (await Session.SaveBlockAsTemplateAsync(part, _blockName.Trim(), _blockAllViews, _blockWithValues)) _blockName = "";
+  }
+
   private static string? Empty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 
   private string Title(string id) => StudioText.Title(Session!, id);

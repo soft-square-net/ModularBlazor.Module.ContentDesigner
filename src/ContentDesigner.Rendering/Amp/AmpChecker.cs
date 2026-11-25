@@ -3,8 +3,11 @@ using System.Text.RegularExpressions;
 
 namespace soft.square.net.ContentDesigner.Rendering.Amp;
 
-/// <summary>A broken AMP rule: what and where (the tag or attribute).</summary>
-public sealed record AmpIssue(string Rule, string Message);
+/// <summary>
+/// A broken AMP rule: what and where (the tag or attribute). <see cref="Part"/>: the design part (<c>content:{id}</c>,
+/// <c>prop:{key}</c>, <c>items</c>) whose markup breaks it, when the check could tell (null: the page itself).
+/// </summary>
+public sealed record AmpIssue(string Rule, string Message, string? Part = null);
 
 /// <summary>
 /// The AMP rules a page can be checked against offline (the official validator needs Node; tests run it when
@@ -75,6 +78,31 @@ public static partial class AmpChecker
             if (!scripts.Any(s => s.Attributes.GetValueOrDefault("custom-element") == component))
                 issues.Add(new("extension", $"<{component}> needs its extension script."));
 
+        issues.AddRange(TagIssues(html, tags));
+
+        var custom = CustomStyle().Matches(html);
+        if (custom.Count > 1) issues.Add(new("amp-custom", "The page has one <style amp-custom> at most."));
+        foreach (Match block in custom)
+        {
+            var css = block.Groups["css"].Value;
+            var bytes = Encoding.UTF8.GetByteCount(css);
+            if (bytes > AmpStyles.MaxBytes) issues.Add(new("css-size", $"The custom CSS is {bytes} bytes; AMP allows {AmpStyles.MaxBytes}."));
+            if (css.Contains("!important", StringComparison.OrdinalIgnoreCase)) issues.Add(new("css-important", "The custom CSS uses !important."));
+        }
+        return issues;
+    }
+
+    /// <summary>
+    /// The rules a piece of markup (one block's) can break by itself: forbidden tags, stylesheets and style elements,
+    /// style attributes, event handlers, media layouts and https sources. The page's own rules (head, scripts, CSS)
+    /// are <see cref="Check"/>'s.
+    /// </summary>
+    public static IReadOnlyList<AmpIssue> CheckFragment(string html) =>
+        TagIssues(html, [.. Tag().Matches(html).Select(m => (Name: m.Groups["name"].Value.ToLowerInvariant(), Attributes: Attributes(m.Groups["attrs"].Value), m.Index))]);
+
+    private static List<AmpIssue> TagIssues(string html, List<(string Name, Dictionary<string, string> Attributes, int Index)> tags)
+    {
+        var issues = new List<AmpIssue>();
         foreach (var tag in tags)
         {
             if (Forbidden.Contains(tag.Name) && !(tag.Name == "img" && InsideNoscript(html, tag.Index)))
@@ -99,16 +127,6 @@ public static partial class AmpChecker
                 !source.StartsWith('/') && // relative to the page (on Unix "/x" parses as an absolute file URI)
                 Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme != Uri.UriSchemeHttps)
                 issues.Add(new("https", $"<{tag.Name}> loads its source over https ({source})."));
-        }
-
-        var custom = CustomStyle().Matches(html);
-        if (custom.Count > 1) issues.Add(new("amp-custom", "The page has one <style amp-custom> at most."));
-        foreach (Match block in custom)
-        {
-            var css = block.Groups["css"].Value;
-            var bytes = Encoding.UTF8.GetByteCount(css);
-            if (bytes > AmpStyles.MaxBytes) issues.Add(new("css-size", $"The custom CSS is {bytes} bytes; AMP allows {AmpStyles.MaxBytes}."));
-            if (css.Contains("!important", StringComparison.OrdinalIgnoreCase)) issues.Add(new("css-important", "The custom CSS uses !important."));
         }
         return issues;
     }

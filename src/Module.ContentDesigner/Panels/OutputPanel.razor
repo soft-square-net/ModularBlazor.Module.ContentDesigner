@@ -1,7 +1,9 @@
 @inherits StudioPanelBase
+@implements IAsyncDisposable
 @*
   The pages the server renders from the views as edited (POST .../design/preview): the responsive HTML, and the AMP
-  page with its CSS size and the AMP rules it breaks.
+  page with its CSS against AMP's limit and the AMP rules it breaks. An issue a block causes names it: click to select
+  it in the AMP view. While a page is shown, it renders again a second after the last edit.
 *@
 
 <div class="cd-panel cd-output">
@@ -17,7 +19,10 @@
     @if (_preview is { Amp: true } amp)
     {
       <span class="@(amp.AmpIssues.Count == 0 ? "cd-ok" : "cd-error")">@(amp.AmpIssues.Count == 0 ? "AMP rules pass" : $"{amp.AmpIssues.Count} AMP issue(s)")</span>
-      <span class="cd-muted">CSS @(amp.CssBytes.ToString("N0")) of 75,000 bytes</span>
+      <span class="cd-budget @(amp.CssBytes > Limit ? "is-over" : amp.CssBytes >= Limit * 8 / 10 ? "is-near" : "")">
+        <span class="cd-budget__label">CSS @amp.CssBytes.ToString("N0") / @Limit.ToString("N0") bytes</span>
+        <meter class="cd-budget__bar" min="0" max="@Limit" low="@(Limit * 8 / 10)" high="@Limit" optimum="0" value="@amp.CssBytes" aria-label="AMP CSS size"></meter>
+      </span>
     }
   </div>
   @if (_preview is { } preview)
@@ -25,9 +30,18 @@
     @if (preview.AmpIssues.Count > 0)
     {
       <ul class="cd-list">
-        @foreach (var issue in preview.AmpIssues)
+        @foreach (var issue in preview.AmpIssues.OrderBy(i => i.Part is null))
         {
-          <li class="cd-list__item cd-problem cd-problem--error"><span class="cd-tag">@issue.Rule</span> @issue.Message</li>
+          <li class="cd-list__item cd-problem cd-problem--error @(issue.Part is null ? "" : "is-link")"
+              tabindex="@(issue.Part is null ? null : "0")" @onclick="() => Go(issue)" @onkeydown="e => Key(e, issue)">
+            <span class="cd-tag">@issue.Rule</span>
+            <span class="cd-list__main">
+              <span class="cd-list__title">@issue.Message</span>
+              <span class="cd-list__meta">
+                <span class="cd-muted">@(issue.Part is { } part && Session is not null ? StudioText.Title(Session, part) : "the page")</span>
+              </span>
+            </span>
+          </li>
         }
       </ul>
     }
@@ -44,10 +58,15 @@
 </div>
 
 @code {
+  private const int Limit = 75_000;
+  private static readonly TimeSpan Settle = TimeSpan.FromSeconds(1);
+
   private PreviewDto? _preview;
   private bool _amp;
   private bool _loading;
   private bool _tried;
+  private DViews? _renderedFrom;
+  private CancellationTokenSource? _pending;
 
   private async Task ShowAsync(bool amp)
   {
@@ -55,7 +74,47 @@
     _amp = amp;
     _loading = true;
     _tried = true;
+    _renderedFrom = Session.Views;
     _preview = await Session.PreviewAsync(amp);
     _loading = false;
+  }
+
+  /// <summary>Renders again a second after the views last changed, while a page is shown.</summary>
+  protected override void OnSessionChanged()
+  {
+    if (_preview is null || Session?.Views is not { } views || ReferenceEquals(views, _renderedFrom)) return;
+    _renderedFrom = views;
+    _pending?.Cancel();
+    _pending = new CancellationTokenSource();
+    var token = _pending.Token;
+    _ = Task.Delay(Settle, token).ContinueWith(async t =>
+    {
+      if (t.IsCanceled) return;
+      await InvokeAsync(async () =>
+      {
+        await ShowAsync(_amp);
+        StateHasChanged();
+      });
+    }, TaskScheduler.Default);
+  }
+
+  private void Go(AmpIssue issue)
+  {
+    if (Session is null || issue.Part is not { } part) return;
+    Session.SelectView(Views.Amp);
+    Session.Select(part);
+  }
+
+  private void Key(KeyboardEventArgs e, AmpIssue issue)
+  {
+    if (e.Key is "Enter" or " ") Go(issue);
+  }
+
+  public ValueTask DisposeAsync()
+  {
+    _pending?.Cancel();
+    _pending?.Dispose();
+    Dispose();
+    return ValueTask.CompletedTask;
   }
 }

@@ -29,6 +29,9 @@ public sealed class ContentDesignerRoutes : ICarterModule
         Designs.Delete.Map(designs);
         Designs.Workspace.Map(designs);
         Designs.Events.Map(designs);
+        Designs.Library.Map(designs);
+        Designs.LibraryItem.Map(designs);
+        Designs.AttachContent.Map(designs);
 
         var templates = app.MapGroup("").WithTags("Templates").AddEndpointFilter<ContentDesignerProblemsFilter>();
         Templates.ListDocumentTemplates.Map(templates);

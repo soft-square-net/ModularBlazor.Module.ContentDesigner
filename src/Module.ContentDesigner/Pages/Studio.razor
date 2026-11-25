@@ -2,20 +2,28 @@
 @inherits ContentDesignerPageBase
 @implements IAsyncDisposable
 @using soft.square.net.Share.All
+@using soft.square.net.Module.ContentDesigner.Panels
 @inject IStudioPanels Panels
 @inject IPageContext PageContext
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 @*
   The designer studio of one post: a MudDock workspace whose panes are dock panels (the dock-panel contract), the
   studio's own and those other modules add for "contentdesigner". The page owns the session (the post, the views as
   edited, undo, the checks); every pane finds it by the post id the page puts in the page context ("content.post").
   While the page is open and visible it polls the post's change feed in Content and reloads what the sections change.
+
+  Focus mode (the Focus button, Ctrl+Shift+F; Esc leaves it): the studio fills the window over the layout's chrome, as a
+  fixed frame, so it works whatever layout the page has (no layout fills the "blank" role yet). It is a toggle on this
+  page: the session, the unsaved edits and undo are untouched. ?focus=1 opens the page in focus mode, and the toggle keeps
+  the address in step without navigating.
 *@
 
 <PageHeader Title="@Title" />
 
-<div class="cd-studio">
+@* tabindex -1: a click on plain content focuses the studio, so its keys (Esc, Ctrl+Shift+F) reach it, not the body. *@
+<div class="cd-studio @(_focus ? "cd-studio--focus" : "")" tabindex="-1" @ref="_root" @onkeydown="OnKeyAsync">
   <div class="cd-studio__bar" role="toolbar" aria-label="Studio">
     <a class="mud-button-root mud-button-text mud-button-small" href="contentdesigner">← Designs</a>
     <strong class="cd-studio__title" title="@_session?.Workspace?.Post.PublicId">@Title</strong>
@@ -88,6 +96,10 @@
     }
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="The panes back where they started"
             disabled="@(_dock is null)" @onclick="ResetLayoutAsync">Reset layout</button>
+    <button type="button" class="mud-button-root mud-button-small @(_focus ? "mud-button-filled mud-button-primary" : "mud-button-outlined")"
+            aria-pressed="@_focus" title="@(_focus ? "Exit focus (Esc)" : "Fill the window (Ctrl+Shift+F)")" @onclick="() => SetFocusAsync(!_focus)">
+      @(_focus ? "Exit focus" : "Focus")
+    </button>
   </div>
 
   @if (_session?.Error is { } error && _session.Views is null)
@@ -99,21 +111,28 @@
     <p class="cd-error" role="alert">The studio's panes are not in your catalog. Ask an administrator to update the ContentDesigner module.</p>
   }
   <div class="cd-studio__dock" @ref="_host"></div>
+  @if (_session?.LibraryOpen == true)
+  {
+    <LibraryPicker Session="_session" OnClose="() => _session.ShowLibrary(false)" />
+  }
 </div>
 
 @code {
-  private const string LayoutKey = "contentdesigner.studio.layout.v1";
+  private const string LayoutKey = "contentdesigner.studio.layout.v2"; // v2: Toolbox and Explorer, no Templates pane
   private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(4);
 
   [Parameter] public int PostId { get; set; }
 
   private StudioSession? _session;
   private ElementReference _host;
+  private ElementReference _root;
   private IJSObjectReference? _dock;
   private string _dockPanels = "";
   private bool _noPanels;
   private CancellationTokenSource? _poll;
   private int _openedFor;
+
+  private bool _focus;
 
   private string Title => _session?.Workspace?.Post.Title is { Length: > 0 } title ? title : $"Post {PostId}";
 
@@ -135,11 +154,56 @@
     }
   }
 
-  protected override void OnInitialized() => Panels.Changed += OnPanelsChanged;
+  protected override void OnInitialized()
+  {
+    Panels.Changed += OnPanelsChanged;
+    _focus = FocusInAddress(Navigation.Uri);
+  }
+
+  // ───────────── focus mode ─────────────
+
+  private static bool FocusInAddress(string uri) =>
+    new Uri(uri).Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+      .Any(pair => pair is "focus=1" or "focus=true" or "focus");
+
+  /// <summary>Enters or leaves focus mode; the address follows (?focus=1) without a navigation (the dock and canvas lay out by CSS and resize observers).</summary>
+  private async Task SetFocusAsync(bool focus)
+  {
+    if (_focus == focus) return;
+    _focus = focus;
+    StateHasChanged();
+    var uri = new Uri(Navigation.Uri);
+    var query = string.Join('&', uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+      .Where(pair => !pair.StartsWith("focus", StringComparison.Ordinal)).Append(focus ? "focus=1" : null).OfType<string>());
+    var address = uri.GetLeftPart(UriPartial.Path) + (query.Length > 0 ? "?" + query : "") + uri.Fragment;
+    try
+    {
+      await JS.InvokeVoidAsync("history.replaceState", null, "", address);
+    }
+    catch (JSException) { } // the address is a convenience; focus mode works without it
+    if (focus)
+    {
+      try { await _root.FocusAsync(preventScroll: true); } // so Esc leaves at once
+      catch (JSException) { }
+    }
+  }
+
+  private Task OnKeyAsync(KeyboardEventArgs e)
+  {
+    if (e.Key == "Escape" && _focus && _session?.LibraryOpen != true) return SetFocusAsync(false);
+    if (e.CtrlKey && e.ShiftKey && e.Key is "F" or "f") return SetFocusAsync(!_focus);
+    return Task.CompletedTask;
+  }
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender) await MountDockAsync();
+    if (!firstRender) return;
+    await MountDockAsync();
+    if (_focus)
+    {
+      try { await _root.FocusAsync(preventScroll: true); } // opened with ?focus=1: Esc leaves
+      catch (JSException) { }
+    }
   }
 
   private void OnSessionChanged() => InvokeAsync(StateHasChanged);
@@ -178,8 +242,8 @@
   }
 
   /// <summary>
-  /// The first arrangement: contents and structure on the left; the designer and output in the centre over problems and
-  /// activity; properties, templates and JSON-LD on the right. Other modules' panels join the area they asked for.
+  /// The first arrangement: contents, structure, toolbox and explorer on the left; the designer and output in the centre
+  /// over problems and activity; properties and JSON-LD on the right. Other modules' panels join the area they asked for.
   /// </summary>
   private static object DefaultLayout(IReadOnlyList<ShellContribution> panels)
   {

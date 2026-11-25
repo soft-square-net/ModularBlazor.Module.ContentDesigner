@@ -11,6 +11,9 @@ public sealed record WorkspacePost(int Id, string PublicId, string Title, string
 /// <summary>A root value of the post's kind: its key, label, DynamicFields kind and whether the kind requires it.</summary>
 public sealed record WorkspaceValue(string Key, string Label, string Kind, bool Required, string? SchemaProperty);
 
+/// <summary>A value of a block field (its key and label): the inner parts a block template orders and hides.</summary>
+public sealed record WorkspaceBlockValue(string Key, string Label);
+
 /// <summary>
 /// One content of the post for the studio's Contents tray: Content's view of it (stage, section, assignee, revisions),
 /// and the label of its block field.
@@ -43,7 +46,8 @@ public sealed record WorkspaceDto(
     RenderDocument Document,
     IReadOnlyList<WorkspaceValue> KindValues,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> FieldStyles,
-    PostDesignDto? Design);
+    PostDesignDto? Design,
+    IReadOnlyDictionary<string, IReadOnlyList<WorkspaceBlockValue>>? BlockFields = null);
 
 /// <summary>
 /// The studio's workspace of a post (<see cref="WorkspaceDto"/>): Content's post and DynamicFields' field versions, through
@@ -65,9 +69,13 @@ public sealed class GetWorkspaceHandler(IReadRepository<PostDesign> designs, ICo
             var design = await designs.FirstOrDefaultAsync(new DesignByPostSpec(query.PostId), ct);
 
             var styles = new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>(StringComparer.Ordinal);
+            var blockFields = new Dictionary<string, IReadOnlyList<WorkspaceBlockValue>>(StringComparer.Ordinal);
             foreach (var c in post.Contents)
                 if (postFields.Block(c.FieldKey, c.FieldVersion) is { } field)
+                {
                     styles.TryAdd(c.FieldKey, field.Styles.ToDictionary(s => s.Key, s => s.Values, StringComparer.Ordinal));
+                    blockFields.TryAdd(c.FieldKey, [.. field.Values.Select(v => new WorkspaceBlockValue(v.Key, v.Label))]);
+                }
 
             return new WorkspaceDto(
                 new WorkspacePost(post.Id, post.PublicId, post.Title, post.Kind, post.KindVersion, post.Version, post.Permalink),
@@ -78,7 +86,8 @@ public sealed class GetWorkspaceHandler(IReadRepository<PostDesign> designs, ICo
                 workbench.Document(post, postFields, query.Culture, null),
                 [.. (postFields.Kind?.Values ?? []).Select(v => new WorkspaceValue(v.Key, v.Label, v.Kind, v.Required, v.SchemaProperty))],
                 styles,
-                design is null ? null : PostDesignDto.From(design));
+                design is null ? null : PostDesignDto.From(design),
+                blockFields);
         });
 
     /// <summary>"block.video" → "Video": DynamicFields' field versions carry no title, so the key names it.</summary>

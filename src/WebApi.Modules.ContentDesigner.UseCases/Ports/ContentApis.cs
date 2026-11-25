@@ -51,6 +51,26 @@ public sealed record FeedEvent(long Id, string Type, int? PostId, string? Conten
 
 public sealed record FeedPage(IReadOnlyList<FeedEvent> Events, long Last, bool More);
 
+/// <summary>A content of Content's shared library (<c>ContentSummary</c>), as the studio's "add existing content" lists it.</summary>
+public sealed record LibraryContent(
+    string ContentId,
+    string NodeId,
+    string FieldKey,
+    int FieldVersion,
+    string Stage,
+    int Revision,
+    int? AcceptedRevision,
+    string? SectionId,
+    string? AssigneeId,
+    DateTimeOffset UpdatedAt,
+    bool Archived = false);
+
+/// <summary>One library content with its values: Content's <c>PostNode</c> (<c>{ nodeId, schemaId, schemaVersion, content, style, children }</c>).</summary>
+public sealed record LibraryContentDetail(LibraryContent Content, JsonElement Node);
+
+/// <summary>The library's filters (Content's <c>GET /contents</c>).</summary>
+public sealed record LibraryFilter(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20);
+
 /// <summary>Content's API, through the gateway (with the caller's token and tenant).</summary>
 public interface IContentApi
 {
@@ -62,6 +82,15 @@ public interface IContentApi
 
     /// <summary>The post's change feed after an event id (hot reload).</summary>
     Task<FeedPage> GetPostEventsAsync(int postId, long after, CancellationToken ct);
+
+    /// <summary>The shared library: the contents the caller may see, newest change first (archived ones left out).</summary>
+    Task<IReadOnlyList<LibraryContent>> ListContentsAsync(LibraryFilter filter, CancellationToken ct);
+
+    /// <summary>One content with its values, or null when it does not exist (or the caller may not see it).</summary>
+    Task<LibraryContentDetail?> GetContentAsync(string contentId, CancellationToken ct);
+
+    /// <summary>Uses a library content in the post (Content's <c>POST /posts/{id}/contents</c>), at the post's version.</summary>
+    Task AttachContentAsync(int postId, int postVersion, string contentId, int? index, bool required, CancellationToken ct);
 }
 
 public sealed record FieldValueInfo(string Key, string Label, string Kind, bool Required, bool Multiple, string? SchemaProperty);
@@ -101,6 +130,8 @@ public sealed class ExternalApiException(string service, int? status, string mes
         401 => Result<T>.Unauthorized($"{Service} did not accept the caller ({Detail})."),
         403 => Result<T>.Forbidden($"{Service} refused: {Detail}"),
         404 => Result<T>.NotFound($"{Service}: {Detail}"),
+        409 => Result<T>.Conflict($"{Service}: {Detail}"),
+        400 or 422 => Result<T>.Invalid(new ValidationError(Service, Detail)),
         _ => Result<T>.Unavailable($"{Service} is not available: {Detail}")
     };
 }

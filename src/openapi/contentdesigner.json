@@ -573,6 +573,142 @@
         }
       }
     },
+    "/api/contentdesigner/library": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Content's shared library (the contents the caller may see, archived ones left out), for adding an existing content to a post.",
+        "operationId": "ContentDesigner_ListLibrary",
+        "parameters": [
+          {
+            "name": "fieldKey",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "stage",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sectionId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "skip",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 0
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/library/{contentId}": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "One content of the library with its values, as the renderer's block.",
+        "operationId": "ContentDesigner_GetLibraryItem",
+        "parameters": [
+          {
+            "name": "contentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryItemDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/contents": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Add an existing content of the library to the post (Content's attach, at the post's version; 409 when the post changed). Returns the workspace.",
+        "operationId": "ContentDesigner_AttachContent",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AttachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/contentdesigner/document-templates": {
       "get": {
         "tags": [
@@ -1010,7 +1146,7 @@
         "tags": [
           "Templates"
         ],
-        "summary": "Save how a content (content:{id}) is placed in a view as a block template of its field; withContent keeps its values.",
+        "summary": "Save how a content (content:{id}) is placed in a view as a block template of its field; withContent keeps its values; design: the unsaved views (default: the stored draft).",
         "operationId": "ContentDesigner_SaveBlockAsTemplate",
         "parameters": [
           {
@@ -1147,6 +1283,12 @@
           },
           "message": {
             "type": "string"
+          },
+          "part": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1189,6 +1331,39 @@
           },
           "design": {
             "$ref": "#/components/schemas/ViewDesign"
+          }
+        }
+      },
+      "AttachRequest": {
+        "required": [
+          "postVersion",
+          "contentId"
+        ],
+        "type": "object",
+        "properties": {
+          "postVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "contentId": {
+            "type": "string"
+          },
+          "index": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "culture": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1444,6 +1619,18 @@
               "null",
               "string"
             ]
+          },
+          "ampCssBytes": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "ampCssLimit": {
+            "type": "integer",
+            "format": "int32",
+            "default": 75000
           }
         }
       },
@@ -1691,6 +1878,103 @@
         }
       },
       "JsonElement": { },
+      "LibraryContent": {
+        "required": [
+          "contentId",
+          "nodeId",
+          "fieldKey",
+          "fieldVersion",
+          "stage",
+          "revision",
+          "acceptedRevision",
+          "sectionId",
+          "assigneeId",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "contentId": {
+            "type": "string"
+          },
+          "nodeId": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string"
+          },
+          "fieldVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "stage": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "acceptedRevision": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "sectionId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "assigneeId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "archived": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "LibraryItemDto": {
+        "required": [
+          "content",
+          "block"
+        ],
+        "type": "object",
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/LibraryContent"
+          },
+          "block": {
+            "$ref": "#/components/schemas/RenderBlock"
+          }
+        }
+      },
+      "LibraryPage": {
+        "required": [
+          "items",
+          "more"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LibraryContent"
+            }
+          },
+          "more": {
+            "type": "boolean"
+          }
+        }
+      },
       "NewBlockTemplate": {
         "required": [
           "name",
@@ -2281,6 +2565,16 @@
           "withContent": {
             "type": "boolean",
             "default": false
+          },
+          "design": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DesignViews"
+              }
+            ]
           }
         }
       },
@@ -2353,6 +2647,21 @@
           "Amp",
           null
         ]
+      },
+      "WorkspaceBlockValue": {
+        "required": [
+          "key",
+          "label"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
       },
       "WorkspaceContent": {
         "required": [
@@ -2494,6 +2803,18 @@
                 "$ref": "#/components/schemas/PostDesignDto"
               }
             ]
+          },
+          "blockFields": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/WorkspaceBlockValue"
+              }
+            }
           }
         }
       },

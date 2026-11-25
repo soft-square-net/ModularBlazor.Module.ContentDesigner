@@ -162,7 +162,8 @@ Permissions: `contentdesigner.read`, `contentdesigner.arrange`, `contentdesigner
    - the Workflow status panel;
    - Elsa Studio in an iframe pane;
    - test tenant and dry run.
-7. **Studio v2**: drag and drop, the block template library, "save block as template", AMP checks.
+7. **Studio v2** (done, see [studio-v2-plan.md](studio-v2-plan.md)): drag and drop, the block template library,
+   "save block as template", AMP checks per block, focus mode, adding existing content from the library.
 8. **Going live**: Site module, AMP and canonical endpoints, the publish rule; then push updates.
 9. Later: home and section fronts, data-bound blocks.
 

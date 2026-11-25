@@ -13,10 +13,13 @@ using soft.square.net.Module.ContentDesigner.Studio;
     Area = "left", Icon = "layers", Order = 10)]
 [assembly: DockPanel("structure", "Structure", typeof(StructurePanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
     Area = "left", Icon = "list-tree", Order = 20)]
+[assembly: DockPanel("toolbox", "Toolbox", typeof(ToolboxPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
+    Area = "left", Icon = "shapes", Order = 30)]
+[assembly: DockPanel("explorer", "Explorer", typeof(ExplorerPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
+    Area = "left", Icon = "folder-tree", Order = 40)]
 [assembly: DockPanel("properties", "Properties", typeof(PropertiesPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
     Area = "right", Icon = "sliders-horizontal", Order = 10)]
-[assembly: DockPanel("templates", "Templates", typeof(TemplatesPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
-    Area = "right", Icon = "copy", Order = 20)]
+
 [assembly: DockPanel("jsonld", "JSON-LD", typeof(JsonLdPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },
     Area = "right", Icon = "braces", Order = 30)]
 [assembly: DockPanel("problems", "Problems", typeof(ProblemsPanel), ForStudio = StudioKeys.Studio, ForContext = new[] { StudioKeys.Post },

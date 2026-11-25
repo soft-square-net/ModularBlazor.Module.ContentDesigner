@@ -23,6 +23,12 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
 
     private sealed record FeedEventWire(long Id, string Type, int? PostId, Guid? ContentId, int Version, int? Revision, string? Stage, string By, DateTimeOffset At);
 
+    private sealed record ContentSummaryWire(Guid Id, string NodeId, string FieldKey, int FieldVersion, string? SectionId, string? AssigneeId,
+        string Stage, int Revision, int? AcceptedRevision, DateTimeOffset UpdatedAt, bool Archived);
+
+    private sealed record ContentDetailWire(Guid Id, string NodeId, string FieldKey, int FieldVersion, JsonElement Values, string? SectionId,
+        string? AssigneeId, string Stage, int Revision, int? AcceptedRevision, DateTimeOffset UpdatedAt, DateTimeOffset? ArchivedAt);
+
     private sealed record FeedPageWire(List<FeedEventWire>? Events, long Last, bool More);
 
     public async Task<ContentPost?> GetPostAsync(int postId, CancellationToken ct)
@@ -54,6 +60,34 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
             ? new FeedPage([], after, false)
             : new FeedPage([.. (page.Events ?? []).Select(e => new FeedEvent(e.Id, e.Type, e.PostId, e.ContentId?.ToString(), e.Version, e.Revision, e.Stage, e.By, e.At))],
                 page.Last, page.More);
+    }
+
+    public async Task<IReadOnlyList<LibraryContent>> ListContentsAsync(LibraryFilter filter, CancellationToken ct)
+    {
+        var query = new List<string> { $"skip={Math.Max(0, filter.Skip)}", $"take={Math.Clamp(filter.Take, 1, 200)}" };
+        if (filter.FieldKey is { Length: > 0 } field) query.Add("fieldKey=" + Uri.EscapeDataString(field));
+        if (filter.Stage is { Length: > 0 } stage) query.Add("stage=" + Uri.EscapeDataString(stage));
+        if (filter.SectionId is { Length: > 0 } section) query.Add("sectionId=" + Uri.EscapeDataString(section));
+        var items = await Gateway.ReadAsync<List<ContentSummaryWire>>(Service,
+            await gateway.SendAsync(Service, HttpMethod.Get, "/api/content/contents?" + string.Join('&', query), null, ct), ct);
+        return [.. (items ?? []).Select(c => new LibraryContent(c.Id.ToString(), c.NodeId, c.FieldKey, c.FieldVersion, c.Stage, c.Revision,
+            c.AcceptedRevision, c.SectionId, c.AssigneeId, c.UpdatedAt, c.Archived))];
+    }
+
+    public async Task<LibraryContentDetail?> GetContentAsync(string contentId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(contentId, out var id)) return null;
+        var c = await Gateway.ReadAsync<ContentDetailWire>(Service, await gateway.SendAsync(Service, HttpMethod.Get, $"/api/content/contents/{id}", null, ct), ct);
+        return c is null ? null : new LibraryContentDetail(new LibraryContent(c.Id.ToString(), c.NodeId, c.FieldKey, c.FieldVersion, c.Stage,
+            c.Revision, c.AcceptedRevision, c.SectionId, c.AssigneeId, c.UpdatedAt, c.ArchivedAt is not null), c.Values);
+    }
+
+    public async Task AttachContentAsync(int postId, int postVersion, string contentId, int? index, bool required, CancellationToken ct)
+    {
+        if (!Guid.TryParse(contentId, out var id)) throw new ExternalApiException(Service, 404, $"'{contentId}' is not a content id.");
+        using var response = await gateway.SendAsync(Service, HttpMethod.Post, $"/api/content/posts/{postId}/contents",
+            new { version = postVersion, contentId = id, index, required }, ct);
+        if (!response.IsSuccessStatusCode) throw await Gateway.FailureAsync(Service, response, ct);
     }
 
     /// <summary>The post's kind: its document's root field (the post's own schema id when the document has none).</summary>

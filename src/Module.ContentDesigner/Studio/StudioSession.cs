@@ -36,6 +36,9 @@ public sealed class StudioSession
     public RenderDocument? Document { get; private set; }
     public PostDesignDto? Design { get; private set; }
     public IReadOnlyDictionary<int, RenderBlockTemplate> BlockTemplates { get; private set; } = new Dictionary<int, RenderBlockTemplate>();
+
+    /// <summary>The tenant's block templates (the Explorer, the Toolbox and Properties list them).</summary>
+    public IReadOnlyList<BlockTemplateDto> BlockTemplateList { get; private set; } = [];
     public IReadOnlyList<DocumentTemplateDto> Templates { get; private set; } = [];
 
     /// <summary>The views as edited; <see cref="Saved"/> as last read or saved.</summary>
@@ -48,6 +51,16 @@ public sealed class StudioSession
     public string? Culture { get; private set; }
     public string? Direction { get; private set; }
     public bool ShowHidden { get; private set; } = true;
+
+    /// <summary>Whether the library picker ("add existing content") is open.</summary>
+    public bool LibraryOpen { get; private set; }
+
+    public void ShowLibrary(bool open)
+    {
+        if (LibraryOpen == open) return;
+        LibraryOpen = open;
+        Notify();
+    }
 
     public DesignReport? Report { get; private set; }
     public bool Checking { get; private set; }
@@ -83,9 +96,7 @@ public sealed class StudioSession
         Accept(workspace);
         TakeDesign(design, clearHistory: true);
 
-        var templates = await api.ListBlockTemplatesAsync();
-        BlockTemplates = templates.ToDictionary(t => t.Id, t => new RenderBlockTemplate(t.PartOrder, t.HiddenParts,
-            t.Tokens is null ? null : new Dictionary<string, string>(t.Tokens)));
+        await LoadBlockTemplatesAsync(api);
         Templates = await api.ListDocumentTemplatesAsync(workspace.Post.Kind);
 
         // Start the feed at its end: the studio shows what happens from now on.
@@ -95,6 +106,14 @@ public sealed class StudioSession
         Activity.Clear();
         Activity.AddRange(page.Events.Reverse().Take(20));
     });
+
+    private async Task LoadBlockTemplatesAsync(ContentDesignerClient api)
+    {
+        var templates = await api.ListBlockTemplatesAsync();
+        BlockTemplateList = [.. templates.OrderBy(t => t.FieldKey, StringComparer.Ordinal).ThenBy(t => t.View).ThenBy(t => t.Name, StringComparer.CurrentCulture)];
+        BlockTemplates = templates.ToDictionary(t => t.Id, t => new RenderBlockTemplate(t.PartOrder, t.HiddenParts,
+            t.Tokens is null ? null : new Dictionary<string, string>(t.Tokens)));
+    }
 
     /// <summary>The post again (after a change in Content), keeping the design, the edits and the selection.</summary>
     public Task<bool> ReloadPostAsync(IReadOnlySet<string>? changed = null) => RunAsync(async api =>
@@ -139,6 +158,24 @@ public sealed class StudioSession
         Views = next;
         if (select is not null) Selected = select;
         Notify();
+        return true;
+    }
+
+    /// <summary><see cref="Edit"/> for an edit that also says what to select (a region it added).</summary>
+    public bool EditWith(Func<DViews, (DViews Views, string? Select)> edit)
+    {
+        string? select = null;
+        if (!Edit(v =>
+            {
+                var (next, selected) = edit(v);
+                select = selected;
+                return next;
+            })) return false;
+        if (select is not null && Selected != select)
+        {
+            Selected = select;
+            Notify();
+        }
         return true;
     }
 
@@ -213,6 +250,118 @@ public sealed class StudioSession
         Direction ??= Document?.Direction;
         Notify();
     }
+
+    // ───────────── drag and drop ─────────────
+
+    /// <summary>The block field of a content of the post.</summary>
+    public string? FieldOf(string contentId) => Workspace?.Contents.FirstOrDefault(c => c.ContentId == contentId)?.FieldKey;
+
+    public BlockTemplateDto? BlockTemplate(int id) => BlockTemplateList.FirstOrDefault(t => t.Id == id);
+
+    /// <summary>A drop on the canvas: one edit (undoable), or a library content added to the post and then placed.</summary>
+    public async Task<bool> DropAsync(CanvasDrop drop)
+    {
+        if (Views is null) return false;
+        DropPlan plan;
+        try
+        {
+            plan = DropPlanner.Plan(Views, View, drop, FieldOf, id => BlockTemplate(id) is { } t
+                ? new TemplateInfo(t.Id, t.FieldKey, t.View?.ToString() ?? "", t.Tokens is null ? null : new Dictionary<string, string>(t.Tokens))
+                : null);
+        }
+        catch (EditException e)
+        {
+            await _toast(e.Message, "warning");
+            return false;
+        }
+        if (plan.Attach is { } attach) return await AttachAsync(attach.ContentId, required: false, attach.RegionId, attach.Index);
+        return plan.Edit is { } edit && EditWith(edit);
+    }
+
+    // ───────────── the library ─────────────
+
+    public async Task<LibraryPage?> LibraryAsync(string? fieldKey, string? stage, string? sectionId, int skip, int take)
+    {
+        LibraryPage? page = null;
+        await RunAsync(async api => page = await api.ListLibraryAsync(fieldKey, stage, sectionId, skip, take), toast: false);
+        return page;
+    }
+
+    public async Task<LibraryItemDto?> LibraryItemAsync(string contentId)
+    {
+        LibraryItemDto? item = null;
+        await RunAsync(async api => item = await api.GetLibraryItemAsync(contentId), toast: false);
+        return item;
+    }
+
+    /// <summary>
+    /// Adds a library content to the post (at the post's version), then places it in a region at a position when one is
+    /// given (otherwise it shows through <c>items</c>). A post that changed meanwhile is reloaded, and nothing is added.
+    /// </summary>
+    public Task<bool> AttachAsync(string contentId, bool required, string? regionId = null, int index = int.MaxValue) => RunAsync(async api =>
+    {
+        if (Workspace is null) return;
+        if (Workspace.Contents.Any(c => c.ContentId == contentId))
+        {
+            await _toast("That content is in the post already.", "info");
+            return;
+        }
+        try
+        {
+            Accept(await api.AttachContentAsync(PostId, new AttachRequest
+            {
+                PostVersion = Workspace.Post.Version, ContentId = contentId, Required = required, Culture = Culture
+            }));
+        }
+        catch (ContentDesignerApiException e) when (e.StatusCode == 409)
+        {
+            Accept(await api.GetWorkspaceAsync(PostId, Culture));
+            throw new InvalidOperationException("The post changed in Content meanwhile; it is reloaded. Add the content again.");
+        }
+        ChangedContents = new HashSet<string> { contentId };
+        var part = "content:" + contentId;
+        if (regionId is not null) Edit(v => DesignEditor.PlaceAt(v, View, part, regionId, index), part);
+        else Select(part);
+        await _toast("The content is added to the post.", "success");
+    });
+
+    // ───────────── block templates ─────────────
+
+    /// <summary>
+    /// Saves how a content shows as a block template of its field: in this view, or one template per view (named
+    /// "{name} · {view}"), from the views as edited (unsaved ones too).
+    /// </summary>
+    public Task<bool> SaveBlockAsTemplateAsync(string part, string name, bool allViews, bool withContent) => RunAsync(async api =>
+    {
+        if (Views is null) return;
+        var design = StudioJson.ToApi(Views);
+        var views = allViews ? Studio.Views.All : [View];
+        foreach (var view in views)
+            await api.SaveBlockAsTemplateAsync(PostId, Studio.Views.Device(view), new SaveBlockRequest
+            {
+                Part = part, Name = allViews ? $"{name} · {Studio.Views.Label(view)}" : name, WithContent = withContent, Design = design
+            });
+        await LoadBlockTemplatesAsync(api);
+        await _toast(allViews ? $"Saved as {views.Count} block templates." : $"Saved as the block template \"{name}\".", "success");
+    });
+
+    /// <summary>Renames a block template, or changes its inner parts (their order and the hidden ones).</summary>
+    public Task<bool> EditBlockTemplateAsync(BlockTemplateDto template, string name, IReadOnlyList<string> partOrder, IReadOnlyList<string> hiddenParts) =>
+        RunAsync(async api =>
+        {
+            await api.EditBlockTemplateAsync(template.Id, new BlockTemplateEdit
+            {
+                Version = template.Version, Name = name, PartOrder = partOrder, HiddenParts = hiddenParts, Tokens = template.Tokens, Content = template.Content
+            });
+            await LoadBlockTemplatesAsync(api);
+        });
+
+    public Task<bool> DeleteBlockTemplateAsync(BlockTemplateDto template) => RunAsync(async api =>
+    {
+        await api.DeleteBlockTemplateAsync(template.Id, template.Version);
+        await LoadBlockTemplatesAsync(api);
+        await _toast($"The block template \"{template.Name}\" is deleted.", "success");
+    });
 
     // ───────────── saving and the API ─────────────
 

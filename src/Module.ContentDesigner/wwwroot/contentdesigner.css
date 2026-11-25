@@ -87,3 +87,62 @@
 .mud-dock-blazor:has(> .mb-module-panel > .cd-panel), .mb-module-panel:has(> .cd-panel) { height: 100%; }
 .cd-template { flex-wrap: wrap; }
 .cd-template .cd-list__main { flex-basis: 100%; }
+
+/* ───────────── Studio v2 ───────────── */
+
+/* Focus mode: the studio fills the window over the layout's chrome (no layout fills the "blank" role yet). */
+.cd-studio--focus { position: fixed; inset: 0; z-index: 1300; height: auto; min-height: 0; padding: 8px; background: var(--mud-palette-background); }
+
+/* The canvas's root block (the page element): a drop target for regions at the top. */
+.cd-studio:focus { outline: none; }
+.cd-page-root { min-height: 100%; }
+/* Embeds (a video's iframe) would take the pointer: on the canvas a block is selected and dragged, not played. */
+.cd-page-root :is(iframe, video, audio, object, embed) { pointer-events: none; }
+
+/* Palette items (Toolbox, tray, Explorer, library): drag them onto the canvas. */
+.cd-palette { cursor: grab; }
+.cd-palette:active { cursor: grabbing; }
+.cd-palette.is-disabled { color: var(--mud-palette-text-secondary); }
+.cd-palette-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cd-palette-list > .cd-palette { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px dashed var(--mud-palette-lines-inputs);
+  border-radius: var(--mud-default-borderradius, 8px); background: var(--mud-palette-surface); user-select: none; }
+.cd-palette-list > .cd-palette:hover { background: var(--mud-palette-action-default-hover); }
+.cd-palette-list > .cd-palette:focus-visible { outline: 2px solid var(--mud-palette-primary); outline-offset: 1px; }
+.cd-palette__icon { color: var(--mud-palette-text-secondary); }
+body.mud-canvas-dragging .cd-palette { cursor: grabbing; }
+
+/* Explorer */
+.cd-tree { margin-block: 4px; }
+.cd-tree__summary { cursor: pointer; font-weight: 600; padding: 4px 2px; }
+.cd-tree--nested { margin-inline-start: 10px; }
+.cd-tree--nested > .cd-tree__summary { font-weight: 500; }
+.cd-tree.is-unused > .cd-tree__summary { color: var(--mud-palette-text-secondary); }
+.cd-tree__group { margin-inline-start: 10px; display: grid; gap: 2px; }
+.cd-inline { display: flex; gap: 6px; align-items: center; flex: 1; }
+.cd-parts { flex-basis: 100%; padding: 6px; border-top: 1px solid var(--mud-palette-lines-default); }
+.cd-parts__list { margin: 0 0 6px; padding-inline-start: 20px; display: grid; gap: 2px; }
+.cd-parts__item { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.cd-explorer .cd-list__item.cd-template { flex-wrap: wrap; }
+.cd-form__title { margin: 8px 0 4px; font-size: 0.85rem; font-weight: 600; }
+.cd-section__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Problems and Output: the view filter and AMP's CSS budget */
+.cd-filter { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.cd-budget { display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--mud-palette-text-secondary); padding: 2px 8px; }
+.cd-budget__bar { inline-size: 120px; block-size: 8px; }
+.cd-budget.is-near .cd-budget__label { color: var(--mud-palette-warning); }
+.cd-budget.is-over .cd-budget__label { color: var(--mud-palette-error); font-weight: 600; }
+.cd-list__item.is-link { cursor: pointer; }
+.cd-list__item.is-link:focus-visible { outline: 2px solid var(--mud-palette-primary); }
+
+/* The library picker: a floating panel, not a modal, so its rows can be dragged onto the canvas. */
+.cd-floating { position: fixed; inset-block-end: 16px; inset-inline-end: 16px; z-index: 1400; inline-size: min(440px, calc(100vw - 32px));
+  max-block-size: min(70vh, 640px); display: flex; flex-direction: column; gap: 6px; padding: 10px; overflow: hidden;
+  background: var(--mud-palette-surface); color: var(--mud-palette-text-primary); border: 1px solid var(--mud-palette-lines-default);
+  border-radius: var(--mud-default-borderradius, 8px); box-shadow: var(--mud-elevation-8, 0 8px 24px rgba(0, 0, 0, 0.18)); }
+.cd-floating__head { display: flex; align-items: center; justify-content: space-between; }
+.cd-library__filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.cd-library__body { overflow: auto; flex: 1; min-block-size: 80px; }
+.cd-library__preview { max-block-size: 200px; overflow: auto; padding: 6px; border: 1px solid var(--mud-palette-lines-default);
+  border-radius: 4px; background: var(--mud-palette-background); }
+.cd-library__add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }

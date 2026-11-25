@@ -45,13 +45,15 @@ public sealed record DesignPage(IReadOnlyList<DesignSummary> Items, int Page, in
 /// <summary>
 /// The checks' findings: <see cref="Valid"/> when there is no error (warnings do not block publication). <see cref="JsonLd"/>
 /// is the post's JSON-LD as DynamicFields built it for the check (null when it built none), for the studio's JSON-LD panel.
+/// <see cref="AmpCssBytes"/>: the AMP page's custom CSS size (null when the AMP view was not checked), of <see cref="AmpCssLimit"/>.
 /// </summary>
-public sealed record DesignReport(bool Valid, int Errors, int Warnings, IReadOnlyList<DesignProblem> Problems, string? JsonLd = null)
+public sealed record DesignReport(bool Valid, int Errors, int Warnings, IReadOnlyList<DesignProblem> Problems, string? JsonLd = null,
+    int? AmpCssBytes = null, int AmpCssLimit = soft.square.net.ContentDesigner.Rendering.Amp.AmpStyles.MaxBytes)
 {
-    public static DesignReport From(IReadOnlyList<DesignProblem> problems, string? jsonLd = null)
+    public static DesignReport From(IReadOnlyList<DesignProblem> problems, string? jsonLd = null, int? ampCssBytes = null)
     {
         var errors = problems.Count(p => p.Severity == ProblemSeverity.Error);
-        return new(errors == 0, errors, problems.Count - errors, problems, jsonLd);
+        return new(errors == 0, errors, problems.Count - errors, problems, jsonLd, ampCssBytes);
     }
 }
 
