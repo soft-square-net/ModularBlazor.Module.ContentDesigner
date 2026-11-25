@@ -94,8 +94,9 @@ public sealed class DeleteBlockTemplateHandler(IRepository<BlockTemplate> templa
 /// <summary>
 /// Save how one content is placed in a view as a block template of its field: the placement's tokens, the inner
 /// order and hidden parts of the block template it uses (if any), and with <see cref="WithContent"/> its values too.
+/// <see cref="Design"/>: the views as the studio has them, unsaved (null: the stored draft).
 /// </summary>
-public sealed record SaveBlockAsTemplateCommand(int PostId, ViewKind View, string Part, string Name, bool WithContent = false)
+public sealed record SaveBlockAsTemplateCommand(int PostId, ViewKind View, string Part, string Name, bool WithContent = false, DesignViews? Design = null)
     : ICommand<Result<BlockTemplateDto>>;
 
 public sealed class SaveBlockAsTemplateHandler(IReadRepository<PostDesign> designs, IRepository<BlockTemplate> templates, IContentApi content,
@@ -114,7 +115,7 @@ public sealed class SaveBlockAsTemplateHandler(IReadRepository<PostDesign> desig
             if (post.Contents.FirstOrDefault(x => x.ContentId == part.Key) is not { } info)
                 return Result<BlockTemplateDto>.NotFound($"Content {part.Key} is not attached to post {c.PostId}.");
 
-            var placement = design.Draft.Resolve(c.View).PlacementOf(part);
+            var placement = (c.Design ?? design.Draft).Resolve(c.View).PlacementOf(part);
             BlockTemplate? used = placement?.BlockTemplateId is { } id ? await templates.FirstOrDefaultAsync(new BlockTemplateByIdSpec(id), ct) : null;
             var tokens = new Dictionary<string, string>(used?.Tokens ?? StyleTokens.Empty, StringComparer.Ordinal);
             foreach (var (token, value) in placement?.Tokens ?? StyleTokens.Empty) tokens[token] = value;

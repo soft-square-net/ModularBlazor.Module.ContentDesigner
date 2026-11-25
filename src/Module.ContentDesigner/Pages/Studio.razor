@@ -2,6 +2,7 @@
 @inherits ContentDesignerPageBase
 @implements IAsyncDisposable
 @using soft.square.net.Share.All
+@using soft.square.net.Module.ContentDesigner.Panels
 @inject IStudioPanels Panels
 @inject IPageContext PageContext
 @inject IJSRuntime JS
@@ -99,10 +100,14 @@
     <p class="cd-error" role="alert">The studio's panes are not in your catalog. Ask an administrator to update the ContentDesigner module.</p>
   }
   <div class="cd-studio__dock" @ref="_host"></div>
+  @if (_session?.LibraryOpen == true)
+  {
+    <LibraryPicker Session="_session" OnClose="() => _session.ShowLibrary(false)" />
+  }
 </div>
 
 @code {
-  private const string LayoutKey = "contentdesigner.studio.layout.v1";
+  private const string LayoutKey = "contentdesigner.studio.layout.v2"; // v2: Toolbox and Explorer, no Templates pane
   private static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(4);
 
   [Parameter] public int PostId { get; set; }
@@ -178,8 +183,8 @@
   }
 
   /// <summary>
-  /// The first arrangement: contents and structure on the left; the designer and output in the centre over problems and
-  /// activity; properties, templates and JSON-LD on the right. Other modules' panels join the area they asked for.
+  /// The first arrangement: contents, structure, toolbox and explorer on the left; the designer and output in the centre
+  /// over problems and activity; properties and JSON-LD on the right. Other modules' panels join the area they asked for.
   /// </summary>
   private static object DefaultLayout(IReadOnlyList<ShellContribution> panels)
   {

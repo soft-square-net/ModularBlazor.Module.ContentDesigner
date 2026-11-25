@@ -173,16 +173,16 @@ public sealed class DeleteBlockTemplate : IEndpoint
 
 public sealed class SaveBlockAsTemplate : IEndpoint
 {
-    public sealed record SaveBlockRequest(string Part, string Name, bool WithContent = false);
+    public sealed record SaveBlockRequest(string Part, string Name, bool WithContent = false, DesignViews? Design = null);
 
     public static RouteHandlerBuilder Map(IEndpointRouteBuilder app) =>
         app.MapPost("/posts/{postId:int}/design/views/{view}/save-block-as-template", HandleAsync)
             .RequirePermission(ContentDesignerPermissions.Templates)
             .WithName("ContentDesigner_SaveBlockAsTemplate")
-            .WithSummary("Save how a content (content:{id}) is placed in a view as a block template of its field; withContent keeps its values.");
+            .WithSummary("Save how a content (content:{id}) is placed in a view as a block template of its field; withContent keeps its values; design: the unsaved views (default: the stored draft).");
 
     private static async Task<Results<Created<BlockTemplateDto>, ProblemHttpResult>> HandleAsync(int postId, string view, SaveBlockRequest r, ISender sender, CancellationToken ct) =>
         !ViewKinds.TryParse(view, out var kind)
             ? Problems.UnknownView(view)
-            : (await sender.Send(new SaveBlockAsTemplateCommand(postId, kind, r.Part, r.Name, r.WithContent), ct)).ToCreatedResult(t => $"block-templates/{t.Id}");
+            : (await sender.Send(new SaveBlockAsTemplateCommand(postId, kind, r.Part, r.Name, r.WithContent, r.Design), ct)).ToCreatedResult(t => $"block-templates/{t.Id}");
 }

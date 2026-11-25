@@ -2,7 +2,8 @@
 @*
   The contents tray: every content attached to the post (Content's shared library) with its stage, section and
   assignee, and whether the current view places it by name, shows it through "items", or not at all; then the post's
-  own values (the kind's root values). Click to select. Contents a section changed since the post was opened are marked.
+  own values (the kind's root values). Click to select; drag one onto the canvas to place it there. Contents a section
+  changed since the post was opened are marked. "Add existing content…" opens the library picker (Content's shared library).
 *@
 
 <div class="cd-panel cd-contents">
@@ -14,7 +15,11 @@
   {
     var itemsPlaced = DesignEditor.FindPlacement(design, "items") is not null;
     <section class="cd-section">
-      <h3 class="cd-section__title">Contents <span class="cd-muted">(@workspace.Contents.Count)</span></h3>
+      <div class="cd-section__head">
+        <h3 class="cd-section__title">Contents <span class="cd-muted">(@workspace.Contents.Count)</span></h3>
+        <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small" aria-pressed="@Session.LibraryOpen"
+                @onclick="() => Session.ShowLibrary(!Session.LibraryOpen)">Add existing content…</button>
+      </div>
       <ul class="cd-list" role="listbox" aria-label="Contents">
         @foreach (var content in workspace.Contents.OrderBy(c => c.Order))
         {
@@ -22,7 +27,7 @@
           var placed = DesignEditor.FindPlacement(design, id);
           var where = placed is not null ? (placed.Hidden ? "hidden here" : $"in {placed.RegionId}") : itemsPlaced ? "via items" : "not shown";
           <li class="cd-list__item @(Session.Selected == id ? "is-selected" : "") @(Session.ChangedContents.Contains(content.ContentId) ? "is-changed" : "")"
-              role="option" aria-selected="@(Session.Selected == id)" tabindex="0"
+              role="option" aria-selected="@(Session.Selected == id)" tabindex="0" @attributes="Palette.Attributes(Palette.Part(id))"
               @onclick="() => Session.Select(id)" @onkeydown="e => Key(e, id)">
             <span class="cd-list__main">
               <span class="cd-list__title">@StudioText.Content(Session, content.ContentId)</span>
@@ -41,7 +46,7 @@
       </ul>
       @if (workspace.Contents.Count == 0)
       {
-        <p class="cd-empty">The post has no contents yet. Sections add them in Content.</p>
+        <p class="cd-empty">The post has no contents yet. Sections add them in Content, or add one from the library.</p>
       }
     </section>
 
@@ -53,7 +58,7 @@
           var id = "prop:" + value.Key;
           var placed = DesignEditor.FindPlacement(design, id);
           <li class="cd-list__item @(Session.Selected == id ? "is-selected" : "")" role="option" aria-selected="@(Session.Selected == id)" tabindex="0"
-              @onclick="() => Session.Select(id)" @onkeydown="e => Key(e, id)">
+              @attributes="Palette.Attributes(Palette.Part(id))" @onclick="() => Session.Select(id)" @onkeydown="e => Key(e, id)">
             <span class="cd-list__main">
               <span class="cd-list__title">@value.Label</span>
               <span class="cd-list__meta">

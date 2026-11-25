@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using soft.square.net.ContentDesigner.Rendering;
+using soft.square.net.ContentDesigner.Rendering.Amp;
 using soft.square.net.ContentDesigner.Rendering.Model;
 using soft.square.net.WebApi.Modules.ContentDesigner.Core.PostDesignAggregate;
 using soft.square.net.WebApi.Modules.ContentDesigner.Core.TemplateAggregate;
@@ -32,7 +33,11 @@ public sealed class DesignWorkbench(
         public const string Content = "content";
         public const string JsonLd = "jsonld";
         public const string Amp = "amp";
+        public const string AmpCssBudget = "amp-css-budget";
     }
+
+    /// <summary>The share of AMP's CSS limit from which the checks warn.</summary>
+    public const double AmpCssWarnAt = 0.8;
 
     /// <summary>The values JSON-LD needs at its top (plan section 4.5).</summary>
     public static IReadOnlyList<string> JsonLdEssentials { get; } = ["headline", "image", "datePublished", "author"];
@@ -92,8 +97,11 @@ public sealed class DesignWorkbench(
         IReadOnlyCollection<ViewKind>? only, string? culture, CancellationToken ct)
         => (await CheckWithJsonLdAsync(views, designKindVersion, post, only, culture, ct)).Problems;
 
-    /// <summary><see cref="CheckAsync"/>, with the JSON-LD DynamicFields built (null when it built none): the studio's JSON-LD panel.</summary>
-    public async Task<(IReadOnlyList<DesignProblem> Problems, string? JsonLd)> CheckWithJsonLdAsync(DesignViews views, int designKindVersion,
+    /// <summary>
+    /// <see cref="CheckAsync"/>, with the JSON-LD DynamicFields built (null when it built none: the studio's JSON-LD panel)
+    /// and the AMP page's custom CSS size (null when the AMP view was not checked).
+    /// </summary>
+    public async Task<(IReadOnlyList<DesignProblem> Problems, string? JsonLd, int? AmpCssBytes)> CheckWithJsonLdAsync(DesignViews views, int designKindVersion,
         ContentPost post, IReadOnlyCollection<ViewKind>? only, string? culture, CancellationToken ct)
     {
         var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
@@ -111,13 +119,72 @@ public sealed class DesignWorkbench(
             foreach (var missing in MissingEssentials(jsonLd.JsonLd))
                 problems.Add(new(null, ProblemSeverity.Error, Codes.JsonLd, "/" + missing, $"The JSON-LD has no '{missing}'; search engines need it."));
 
+        int? cssBytes = null;
         if (only is not { Count: > 0 } || only.Contains(ViewKind.Amp))
         {
-            var amp = await RenderAsync(views, Document(post, postFields, culture, null), amp: true, ct);
-            foreach (var issue in amp.AmpIssues)
-                problems.Add(new(ViewKind.Amp, ProblemSeverity.Error, Codes.Amp, "", $"AMP ({issue.Rule}): {issue.Message}"));
+            var amp = await RenderAmpCheckedAsync(views, Document(post, postFields, culture, null), ct);
+            cssBytes = amp.CssBytes;
+            problems.AddRange(AmpProblems(views, amp));
         }
-        return (problems, jsonLd?.JsonLd);
+        return (problems, jsonLd?.JsonLd, cssBytes);
+    }
+
+    /// <summary>
+    /// The AMP page's issues as problems of the AMP view: an issue a part's markup causes names that placement
+    /// (<c>/amp/placements/{n}</c>), so the studio can select it; the page's own issues have no path. The custom CSS
+    /// warns from <see cref="AmpCssWarnAt"/> of AMP's limit (over it, the AMP rule itself is an error).
+    /// </summary>
+    public static IEnumerable<DesignProblem> AmpProblems(DesignViews views, RenderedPage amp)
+    {
+        var placements = views.Resolve(ViewKind.Amp).AllPlacements.ToList();
+        var at = "/" + ViewKind.Amp.Key();
+        foreach (var issue in amp.AmpIssues)
+        {
+            var index = issue.Part is { } part ? placements.FindIndex(p => p.Part == part) : -1;
+            yield return new(ViewKind.Amp, ProblemSeverity.Error, Codes.Amp, index >= 0 ? $"{at}/placements/{index}" : "", $"AMP ({issue.Rule}): {issue.Message}");
+        }
+        if (amp.CssBytes <= AmpStyles.MaxBytes && amp.CssBytes >= AmpStyles.MaxBytes * AmpCssWarnAt)
+        {
+            var percent = (int)Math.Round(100.0 * amp.CssBytes / AmpStyles.MaxBytes);
+            yield return new(ViewKind.Amp, ProblemSeverity.Warning, Codes.AmpCssBudget, "",
+                $"The AMP page's CSS is {amp.CssBytes:N0} of {AmpStyles.MaxBytes:N0} bytes ({percent} %).");
+        }
+    }
+
+    /// <summary>
+    /// The AMP page, with each issue a part's markup causes attributed to that part: every shown placement of the AMP view
+    /// is rendered alone and its markup checked (<see cref="AmpChecker.CheckFragment"/>). Page issues those explain are
+    /// not reported twice.
+    /// </summary>
+    public async Task<RenderedPage> RenderAmpCheckedAsync(DesignViews views, RenderDocument document, CancellationToken ct)
+    {
+        var design = await RenderDesignAsync(views, ct);
+        var page = await renderer.AmpAsync(document, design, Settings);
+
+        var hidden = HiddenRegions(design.Amp.Regions);
+        var byPart = new List<AmpIssue>();
+        foreach (var placement in design.Amp.Placements.Where(p => !p.Hidden && !hidden.Contains(p.RegionId)))
+        {
+            ct.ThrowIfCancellationRequested();
+            var alone = new RenderView([new RenderRegion(CheckRegion, "Section")], [placement with { RegionId = CheckRegion, Order = 0 }]);
+            var body = await renderer.RenderBodyAsync(
+                ResponsiveMerge.Amp(document, new RenderDesign(RenderView.Empty, RenderView.Empty, RenderView.Empty, alone)), Settings);
+            byPart.AddRange(AmpChecker.CheckFragment(body).Select(i => i with { Part = placement.Part }));
+        }
+        if (byPart.Count == 0) return page;
+        var explained = byPart.Select(i => (i.Rule, i.Message)).ToHashSet();
+        return page with { AmpIssues = [.. page.AmpIssues.Where(i => !explained.Contains((i.Rule, i.Message))), .. byPart] };
+    }
+
+    private const string CheckRegion = "cd-check";
+
+    /// <summary>Regions that are hidden themselves or inside a hidden one.</summary>
+    private static HashSet<string> HiddenRegions(IReadOnlyList<RenderRegion> regions)
+    {
+        var byId = regions.GroupBy(r => r.Id).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        bool Hidden(RenderRegion r, int depth) =>
+            r.Hidden || (depth < 10 && r.ParentId is { } parent && byId.TryGetValue(parent, out var p) && Hidden(p, depth + 1));
+        return [.. regions.Where(r => Hidden(r, 0)).Select(r => r.Id)];
     }
 
     public static IEnumerable<string> MissingEssentials(string jsonLd)
@@ -231,7 +298,8 @@ public sealed class DesignWorkbench(
         var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
         var jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), JsonLdUrl(post.Permalink), culture,
             Assets(post.Document, postFields), ct);
-        return await RenderAsync(views, Document(post, postFields, culture, jsonLd?.JsonLd), amp, ct);
+        var document = Document(post, postFields, culture, jsonLd?.JsonLd);
+        return amp ? await RenderAmpCheckedAsync(views, document, ct) : await RenderAsync(views, document, amp: false, ct);
     }
 
     /// <summary>

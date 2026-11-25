@@ -1,0 +1,133 @@
+@inherits StudioPanelBase
+@*
+  The Toolbox: what can go on the canvas in the current view. Every item is a MudCanvas palette item (drag it onto the
+  canvas: before, after or inside a block), and its button does the same without a pointer: into the selected region, or
+  the region of the selected block, at its end.
+  - Regions: a new Section, Row or Column.
+  - Parts: "items" and the post's values and contents this view does not place.
+  - Block templates of this view for the block fields the post uses (drop one on a block of its field).
+*@
+
+<div class="cd-panel cd-toolbox">
+  @if (Session?.Workspace is not { } workspace || Session.Current is not { } design)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else
+  {
+    var view = Session.View;
+    var target = TargetRegion(design);
+    <p class="cd-hint">
+      Drag onto the canvas, or click to add @(target is null ? "at the top" : $"to {target}").
+    </p>
+
+    <section class="cd-section">
+      <h3 class="cd-section__title">Regions</h3>
+      <ul class="cd-palette-list">
+        @foreach (var kind in RegionKinds)
+        {
+          <li class="cd-palette" role="button" tabindex="0" @attributes="Palette.Attributes(Palette.Region(kind))"
+              title="@($"Drag onto the canvas, or click to add a {kind.ToLowerInvariant()} {(target is null ? "at the top" : $"in {target}")}")"
+              @onclick="() => AddRegion(kind, target)" @onkeydown="e => Key(e, () => AddRegion(kind, target))">
+            <span class="cd-palette__icon" aria-hidden="true">@(kind == "Section" ? "▭" : kind == "Row" ? "☰" : "▥")</span> @kind
+          </li>
+        }
+      </ul>
+    </section>
+
+    var parts = UnplacedParts(workspace, design).ToList();
+    <section class="cd-section">
+      <h3 class="cd-section__title">Not placed in @Views.Label(view) <span class="cd-muted">(@parts.Count)</span></h3>
+      @if (parts.Count == 0)
+      {
+        <p class="cd-empty">Everything is placed.</p>
+      }
+      <ul class="cd-palette-list">
+        @foreach (var part in parts)
+        {
+          <li class="cd-palette @(target is null ? "is-disabled" : "")" role="button" tabindex="0" aria-disabled="@(target is null)" @key="part"
+              @attributes="Palette.Attributes(Palette.Part(part))"
+              title="@(target is null ? "Drag it onto the canvas, or select a region first" : $"Drag it onto the canvas, or click to place it in {target}")"
+              @onclick="() => Place(part, target)" @onkeydown="e => Key(e, () => Place(part, target))">
+            @StudioText.Title(Session, part)
+          </li>
+        }
+      </ul>
+    </section>
+
+    var fields = workspace.Contents.Select(c => c.FieldKey).ToHashSet(StringComparer.Ordinal);
+    var templates = Session.BlockTemplateList.Where(t => t.View?.ToString() == view && fields.Contains(t.FieldKey)).ToList();
+    <section class="cd-section">
+      <h3 class="cd-section__title">Block templates <span class="cd-muted">(@Views.Label(view), @templates.Count)</span></h3>
+      @if (templates.Count == 0)
+      {
+        <p class="cd-empty">None for this view's blocks.</p>
+      }
+      <ul class="cd-palette-list">
+        @foreach (var template in templates)
+        {
+          var applies = Applies(template);
+          <li class="cd-palette @(applies ? "" : "is-disabled")" role="button" tabindex="0" aria-disabled="@(!applies)" @key="template.Id"
+              @attributes="Palette.Attributes(Palette.Template(template.Id))"
+              title="@(applies ? "Click to apply it to the selected block, or drag it onto a block" : $"Drag it onto a {RenderMapping.Label(template.FieldKey).ToLowerInvariant()} block")"
+              @onclick="() => Apply(template)" @onkeydown="e => Key(e, () => Apply(template))">
+            <span class="cd-tag">@RenderMapping.Label(template.FieldKey)</span> @template.Name
+          </li>
+        }
+      </ul>
+    </section>
+  }
+</div>
+
+@code {
+  private static readonly string[] RegionKinds = ["Section", "Row", "Column"];
+
+  /// <summary>Where a click adds: the selected region, or the region of the selected part; null: the top.</summary>
+  private string? TargetRegion(DView design) => Session?.Selected switch
+  {
+    { } id when DesignEditor.IsRegion(id) && DesignEditor.FindRegion(design, DesignEditor.RegionId(id)) is not null => DesignEditor.RegionId(id),
+    { } id when DesignEditor.FindPlacement(design, id) is { } placement => placement.RegionId,
+    _ => null
+  };
+
+  private static IEnumerable<string> UnplacedParts(WorkspaceDto workspace, DView design)
+  {
+    if (DesignEditor.FindPlacement(design, "items") is null) yield return "items";
+    foreach (var value in workspace.KindValues)
+      if (DesignEditor.FindPlacement(design, "prop:" + value.Key) is null) yield return "prop:" + value.Key;
+    foreach (var content in workspace.Contents.OrderBy(c => c.Order))
+      if (DesignEditor.FindPlacement(design, "content:" + content.ContentId) is null) yield return "content:" + content.ContentId;
+  }
+
+  private void AddRegion(string kind, string? parent)
+  {
+    if (Session is null) return;
+    var view = Session.View;
+    Session.EditWith(v =>
+    {
+      var (result, id) = DesignEditor.AddRegionAt(v, view, kind, parent, int.MaxValue);
+      return (result, DesignEditor.RegionPrefix + id);
+    });
+  }
+
+  private static void Key(KeyboardEventArgs e, Action action)
+  {
+    if (e.Key is "Enter" or " ") action();
+  }
+
+  private void Place(string part, string? region)
+  {
+    if (Session is null || region is null) return;
+    var view = Session.View;
+    Session.Edit(v => DesignEditor.PlaceAt(v, view, part, region, int.MaxValue), part);
+  }
+
+  private bool Applies(BlockTemplateDto template) =>
+    Session?.Selected is { } selected && DesignEditor.IsContent(selected) && Session.FieldOf(selected[8..]) == template.FieldKey;
+
+  private void Apply(BlockTemplateDto template)
+  {
+    if (!Applies(template) || Session?.Selected is not { } part) return;
+    _ = Session.DropAsync(new CanvasDrop("new", null, Palette.Template(template.Id), part, "inside"));
+  }
+}

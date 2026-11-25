@@ -69,6 +69,20 @@ public static class RenderMapping
         return result;
     }
 
+    /// <summary>The render settings of the studio: assets are served by the gateway (the API's origin), not the client's.</summary>
+    public static RenderSettings Settings(Uri? apiBase)
+    {
+        var template = new RenderSettings().AssetUrlTemplate;
+        return apiBase is null
+            ? new RenderSettings()
+            : new RenderSettings { AssetUrlTemplate = new Uri(apiBase, template.TrimStart('/')).ToString().Replace("%7Bid%7D", "{id}") };
+    }
+
+    /// <summary>One block alone, as a page (the library picker's preview): a section holding only that block.</summary>
+    public static PageModel Preview(RenderDocument document, RenderBlock block) =>
+        ResponsiveMerge.Single(document with { Contents = [block] }, new RenderView(
+            [new RenderRegion("preview", "Section")], [new RenderPlacement("content:" + block.Id, "preview")]));
+
     /// <summary>"block.video" → "Video".</summary>
     public static string Label(string fieldKey)
     {

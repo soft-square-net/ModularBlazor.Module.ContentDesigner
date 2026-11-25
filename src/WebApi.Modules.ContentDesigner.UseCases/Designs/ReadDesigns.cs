@@ -51,8 +51,8 @@ public sealed class CheckDesignHandler(IReadRepository<PostDesign> designs, ICon
             if (await content.GetPostAsync(query.PostId, ct) is not { } post)
                 return Result<DesignReport>.NotFound(DesignResults.NoPost(query.PostId));
             var views = query.Design?.Checked() ?? design.Draft;
-            var (problems, jsonLd) = await workbench.CheckWithJsonLdAsync(views, design.KindVersion, post, query.Views, query.Culture, ct);
-            return DesignReport.From(problems, jsonLd);
+            var (problems, jsonLd, ampCss) = await workbench.CheckWithJsonLdAsync(views, design.KindVersion, post, query.Views, query.Culture, ct);
+            return DesignReport.From(problems, jsonLd, ampCss);
         });
 }
 

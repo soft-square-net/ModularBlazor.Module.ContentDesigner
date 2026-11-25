@@ -1,0 +1,275 @@
+@inherits StudioPanelBase
+@*
+  The Explorer: the templates the studio works with.
+  - Document templates of the post's kind: apply one (all views, or the current view only), save this design as a new
+    one, make one the kind's default (new designs start from it). Unsaved edits are saved first.
+  - Block templates, by block field and view: rename, delete, edit the inner parts (the field's values in order, each
+    shown or hidden), apply to the selected block. A template of the current view and of a field the post uses can be
+    dragged onto a block on the canvas. Fields the post does not use are listed greyed.
+*@
+
+<div class="cd-panel cd-explorer">
+  @if (Session?.Workspace is not { } workspace)
+  {
+    <p class="cd-empty">No post is open.</p>
+  }
+  else
+  {
+    var used = workspace.Contents.Select(c => c.FieldKey).ToHashSet(StringComparer.Ordinal);
+    <details class="cd-tree" open>
+      <summary class="cd-tree__summary">Document templates <span class="cd-muted">(@workspace.Post.Kind, @Session.Templates.Count)</span></summary>
+      @if (Session.Templates.Count == 0)
+      {
+        <p class="cd-empty">None yet. Save this design as the first one.</p>
+      }
+      <ul class="cd-list">
+        @foreach (var template in Session.Templates)
+        {
+          <li class="cd-list__item cd-template">
+            <span class="cd-list__main">
+              <span class="cd-list__title">
+                @template.Name
+                @if (template.IsDefault)
+                {
+                  <span class="cd-tag cd-tag--ok">default</span>
+                }
+              </span>
+              <span class="cd-list__meta">
+                <span class="cd-muted">v@(template.KindVersion) of the kind</span>
+                @if (Session.Design?.BasedOnTemplateId == template.Id)
+                {
+                  <span class="cd-muted">· this design started from it</span>
+                }
+              </span>
+              @if (template.Description is { Length: > 0 } description)
+              {
+                <span class="cd-list__note">@description</span>
+              }
+            </span>
+            <span class="cd-buttons">
+              <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small" disabled="@Session.Busy"
+                      @onclick="() => Session.ApplyTemplateAsync(template.Id, false)">Apply</button>
+              <button type="button" class="mud-button-root mud-button-text mud-button-small" disabled="@Session.Busy"
+                      title="@($"Only the {Views.Label(Session.View)} view")" @onclick="() => Session.ApplyTemplateAsync(template.Id, true)">
+                Apply to @Views.Label(Session.View)
+              </button>
+              <button type="button" class="mud-button-root mud-button-text mud-button-small" disabled="@Session.Busy"
+                      @onclick="() => Session.SetDefaultAsync(template.Id, !template.IsDefault)">@(template.IsDefault ? "Not default" : "Make default")</button>
+            </span>
+          </li>
+        }
+      </ul>
+
+      <form class="cd-form" @onsubmit="SaveDocumentAsync" @onsubmit:preventDefault>
+        <h4 class="cd-form__title">Save this design as a template</h4>
+        <label class="cd-label" for="cd-template-name">Name</label>
+        <input id="cd-template-name" class="cd-input" @bind="_name" @bind:event="oninput" maxlength="200" required />
+        <label class="cd-label" for="cd-template-description">Description</label>
+        <input id="cd-template-description" class="cd-input" @bind="_description" maxlength="1000" />
+        <label class="cd-check"><input type="checkbox" @bind="_makeDefault" /> The default for @workspace.Post.Kind</label>
+        <p class="cd-hint">The post's own contents become "items" in the template; values and regions stay.</p>
+        <button type="submit" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
+                disabled="@(Session.Busy || string.IsNullOrWhiteSpace(_name))">Save as template</button>
+      </form>
+    </details>
+
+    <details class="cd-tree" open>
+      <summary class="cd-tree__summary">Block templates <span class="cd-muted">(@Session.BlockTemplateList.Count)</span></summary>
+      @if (Session.BlockTemplateList.Count == 0)
+      {
+        <p class="cd-empty">None yet. Select a block and use "Save as block template" in Properties.</p>
+      }
+      @foreach (var field in Session.BlockTemplateList.GroupBy(t => t.FieldKey).OrderByDescending(g => used.Contains(g.Key)).ThenBy(g => g.Key))
+      {
+        var inPost = used.Contains(field.Key);
+        <details class="cd-tree cd-tree--nested @(inPost ? "" : "is-unused")" open="@inPost">
+          <summary class="cd-tree__summary" title="@(inPost ? field.Key : $"{field.Key}: the post has no such block")">
+            @RenderMapping.Label(field.Key) <span class="cd-muted">@field.Key</span>
+          </summary>
+          @foreach (var byView in field.GroupBy(t => t.View?.ToString() ?? "").OrderBy(g => Views.All.ToList().IndexOf(g.Key)))
+          {
+            <div class="cd-tree__group">
+              <span class="cd-tag @(byView.Key == Session.View ? "cd-tag--ok" : "")">@(byView.Key.Length == 0 ? "?" : Views.Label(byView.Key))</span>
+              <ul class="cd-list">
+                @foreach (var template in byView)
+                {
+                  // Not while a form is open in it: a draggable element cannot place a text cursor.
+                  var draggable = inPost && byView.Key == Session.View && _renaming != template.Id && _parts?.Template.Id != template.Id;
+                  <li class="cd-list__item cd-template @(draggable ? "cd-palette" : "")" @key="template.Id"
+                      @attributes="@(draggable ? Palette.Attributes(Palette.Template(template.Id)) : NoAttributes)"
+                      title="@(draggable ? "Drag onto a block on the canvas" : null)">
+                    @if (_renaming == template.Id)
+                    {
+                      <form class="cd-inline" @onsubmit="() => RenameAsync(template)" @onsubmit:preventDefault>
+                        <input class="cd-input" aria-label="New name" @bind="_newName" @bind:event="oninput" maxlength="200" />
+                        <button type="submit" class="mud-button-root mud-button-text mud-button-primary mud-button-small"
+                                disabled="@(string.IsNullOrWhiteSpace(_newName) || Session.Busy)">Rename</button>
+                        <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="() => _renaming = null">Cancel</button>
+                      </form>
+                    }
+                    else
+                    {
+                      <span class="cd-list__main">
+                        <span class="cd-list__title">@template.Name</span>
+                        <span class="cd-list__meta">
+                          @foreach (var (token, value) in template.Tokens ?? new Dictionary<string, string>())
+                          {
+                            <span class="cd-muted">@token=@value</span>
+                          }
+                          @if (template.Content is not null)
+                          {
+                            <span class="cd-tag">values</span>
+                          }
+                          @if (template.HiddenParts.Count > 0)
+                          {
+                            <span class="cd-muted">hides @string.Join(", ", template.HiddenParts)</span>
+                          }
+                        </span>
+                      </span>
+                      <span class="cd-buttons">
+                        @if (CanApply(template))
+                        {
+                          <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small"
+                                  @onclick="() => Apply(template)">Apply to the selection</button>
+                        }
+                        <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="() => StartRename(template)">Rename</button>
+                        <button type="button" class="mud-button-root mud-button-text mud-button-small"
+                                @onclick="() => StartParts(template)">Inner parts</button>
+                        @if (_deleting == template.Id)
+                        {
+                          <button type="button" class="mud-button-root mud-button-filled mud-button-error mud-button-small" disabled="@Session.Busy"
+                                  @onclick="() => DeleteAsync(template)">Delete it</button>
+                          <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="() => _deleting = null">Keep</button>
+                        }
+                        else
+                        {
+                          <button type="button" class="mud-button-root mud-button-text mud-button-error mud-button-small"
+                                  @onclick="() => _deleting = template.Id">Delete</button>
+                        }
+                      </span>
+                    }
+                    @if (_parts?.Template.Id == template.Id)
+                    {
+                      <div class="cd-parts" role="group" aria-label="Inner parts">
+                        @if (_parts.Keys.Count == 0)
+                        {
+                          <p class="cd-hint">The post has no @RenderMapping.Label(template.FieldKey).ToLowerInvariant() block, so its values are not known here.</p>
+                        }
+                        <ol class="cd-parts__list">
+                          @for (var i = 0; i < _parts.Keys.Count; i++)
+                          {
+                            var at = i;
+                            var key = _parts.Keys[i];
+                            <li class="cd-parts__item">
+                              <label class="cd-check">
+                                <input type="checkbox" checked="@(!_parts.Hidden.Contains(key))" @onchange="e => ToggleHidden(key, e.Value is true)" />
+                                @(_parts.Labels.GetValueOrDefault(key) ?? key)
+                              </label>
+                              <span class="cd-buttons">
+                                <button type="button" class="mud-button-root mud-button-text mud-button-small" aria-label="Earlier" disabled="@(at == 0)"
+                                        @onclick="() => MovePart(at, -1)">↑</button>
+                                <button type="button" class="mud-button-root mud-button-text mud-button-small" aria-label="Later" disabled="@(at == _parts.Keys.Count - 1)"
+                                        @onclick="() => MovePart(at, 1)">↓</button>
+                              </span>
+                            </li>
+                          }
+                        </ol>
+                        <span class="cd-buttons">
+                          <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small" disabled="@Session.Busy"
+                                  @onclick="SavePartsAsync">Save parts</button>
+                          <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="() => _parts = null">Cancel</button>
+                        </span>
+                      </div>
+                    }
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </details>
+      }
+    </details>
+  }
+</div>
+
+@code {
+  private static readonly IReadOnlyDictionary<string, object> NoAttributes = new Dictionary<string, object>();
+
+  private string _name = "";
+  private string? _description;
+  private bool _makeDefault;
+
+  private int? _renaming;
+  private string _newName = "";
+  private int? _deleting;
+
+  /// <summary>The inner parts being edited: the field's value keys in the template's order, the hidden ones, their labels.</summary>
+  private sealed record PartsEdit(BlockTemplateDto Template, List<string> Keys, HashSet<string> Hidden, IReadOnlyDictionary<string, string> Labels);
+  private PartsEdit? _parts;
+
+  private async Task SaveDocumentAsync()
+  {
+    if (Session is null || string.IsNullOrWhiteSpace(_name)) return;
+    if (await Session.SaveAsTemplateAsync(_name.Trim(), string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(), _makeDefault))
+      (_name, _description, _makeDefault) = ("", null, false);
+  }
+
+  private bool CanApply(BlockTemplateDto template) =>
+    Session?.Selected is { } selected && DesignEditor.IsContent(selected)
+    && Session.FieldOf(selected[8..]) == template.FieldKey && template.View?.ToString() == Session.View
+    && Session.Current is { } design && DesignEditor.FindPlacement(design, selected)?.BlockTemplateId != template.Id;
+
+  private void Apply(BlockTemplateDto template)
+  {
+    if (Session?.Selected is not { } part) return;
+    var view = Session.View;
+    if (Session.Current is { } design && DesignEditor.Exists(design, part))
+      Session.Edit(v => DesignEditor.SetBlockTemplate(v, view, part, template.Id), part);
+    else
+      _ = Session.DropAsync(new CanvasDrop("new", null, Palette.Template(template.Id), part, "inside")); // shown through items: place it first
+  }
+
+  private void StartRename(BlockTemplateDto template) => (_renaming, _newName, _deleting) = (template.Id, template.Name, null);
+
+  private async Task RenameAsync(BlockTemplateDto template)
+  {
+    if (Session is null || string.IsNullOrWhiteSpace(_newName)) return;
+    if (await Session.EditBlockTemplateAsync(template, _newName.Trim(), template.PartOrder, template.HiddenParts)) _renaming = null;
+  }
+
+  private async Task DeleteAsync(BlockTemplateDto template)
+  {
+    if (Session is null) return;
+    await Session.DeleteBlockTemplateAsync(template);
+    _deleting = null;
+    if (_parts?.Template.Id == template.Id) _parts = null;
+  }
+
+  private void StartParts(BlockTemplateDto template)
+  {
+    var values = Session?.Workspace?.BlockFields is { } fields && fields.TryGetValue(template.FieldKey, out var known) ? known : [];
+    var keys = template.PartOrder.Where(k => values.Count == 0 || values.Any(v => v.Key == k)).ToList();
+    keys.AddRange(values.Select(v => v.Key).Where(k => !keys.Contains(k)));
+    _parts = new PartsEdit(template, keys, [.. template.HiddenParts], values.ToDictionary(v => v.Key, v => v.Label, StringComparer.Ordinal));
+  }
+
+  private void ToggleHidden(string key, bool shown)
+  {
+    if (_parts is null) return;
+    if (shown) _parts.Hidden.Remove(key); else _parts.Hidden.Add(key);
+  }
+
+  private void MovePart(int at, int by)
+  {
+    if (_parts is null) return;
+    var to = Math.Clamp(at + by, 0, _parts.Keys.Count - 1);
+    (_parts.Keys[at], _parts.Keys[to]) = (_parts.Keys[to], _parts.Keys[at]);
+  }
+
+  private async Task SavePartsAsync()
+  {
+    if (Session is null || _parts is null) return;
+    var template = _parts.Template;
+    if (await Session.EditBlockTemplateAsync(template, template.Name, [.. _parts.Keys], [.. _parts.Keys.Where(_parts.Hidden.Contains)])) _parts = null;
+  }
+}

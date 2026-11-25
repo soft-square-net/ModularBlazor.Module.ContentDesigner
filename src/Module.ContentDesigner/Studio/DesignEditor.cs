@@ -254,6 +254,97 @@ public static class DesignEditor
     public static bool IsPart(string text) =>
         text == "items" || (text.StartsWith("prop:", StringComparison.Ordinal) && text.Length > 5) || (text.StartsWith("content:", StringComparison.Ordinal) && text.Length > 8);
 
+    public static bool IsContent(string text) => text.StartsWith("content:", StringComparison.Ordinal) && text.Length > 8;
+
+    // ───────────── drag and drop ─────────────
+
+    /// <summary>
+    /// Moves a region or a part to position <paramref name="index"/> among the children of <paramref name="parentId"/>
+    /// (null: the top, for regions only). A new parent is a structural edit (every web view with its own design, or AMP
+    /// alone, as <see cref="Place"/>); the position is set in this view only.
+    /// </summary>
+    public static DViews MoveTo(DViews views, string view, string id, string? parentId, int index)
+    {
+        var shown = Resolve(views, view);
+        if (!Exists(shown, id)) throw new EditException($"The {Views.Label(view)} view has no '{id}'.");
+        if (!IsRegion(id) && parentId is null) throw new EditException("A part goes in a region.");
+        if (parentId is not null && FindRegion(shown, parentId) is null) throw new EditException($"The {Views.Label(view)} view has no region '{parentId}'.");
+        if (IsRegion(id)) CheckReparent(shown, RegionId(id), parentId);
+
+        if (ParentOf(shown, id) == parentId) return Order(Detach(views, view), view, id, parentId, index);
+
+        var (result, targets) = StructureTargets(views, view);
+        foreach (var target in targets)
+        {
+            var design = result[target];
+            if (!Exists(design, id)) continue;
+            if (parentId is not null && FindRegion(design, parentId) is null)
+                throw new EditException($"The {Views.Label(target)} view has no region '{parentId}'.");
+            var order = NextOrder(design, parentId);
+            if (IsRegion(id))
+            {
+                var regionId = RegionId(id);
+                CheckReparent(design, regionId, parentId);
+                design = design with { Regions = [.. design.AllRegions.Select(r => r.Id == regionId ? r with { ParentId = parentId, Order = order } : r)] };
+            }
+            else
+            {
+                design = design with { Placements = [.. design.AllPlacements.Select(p => p.Part == id ? p with { RegionId = parentId!, Order = order } : p)] };
+            }
+            result = result.With(target, design);
+        }
+        return Order(result, view, id, parentId, index);
+    }
+
+    /// <summary>Places a part in a region at a position (moving it there when it is placed already).</summary>
+    public static DViews PlaceAt(DViews views, string view, string part, string regionId, int index) =>
+        Order(Place(views, view, part, regionId), view, part, regionId, index);
+
+    /// <summary>Adds a region at a position (in <paramref name="parentId"/>, or at the top); returns its id.</summary>
+    public static (DViews Views, string RegionId) AddRegionAt(DViews views, string view, string kind, string? parentId, int index)
+    {
+        var (result, id) = AddRegion(views, view, kind, parentId);
+        return (Order(result, view, RegionPrefix + id, parentId, index), id);
+    }
+
+    /// <summary>A content's block template in one view (null: none).</summary>
+    public static DViews SetBlockTemplate(DViews views, string view, string part, int? templateId)
+    {
+        if (!IsContent(part)) throw new EditException("Only a content takes a block template.");
+        return SetPlacement(views, view, part, p => p with { BlockTemplateId = templateId });
+    }
+
+    /// <summary>Stops using the block template, keeping its look: its tokens are copied under the placement's own.</summary>
+    public static DViews DetachBlockTemplate(DViews views, string view, string part, IReadOnlyDictionary<string, string>? templateTokens) =>
+        SetPlacement(views, view, part, p =>
+        {
+            var tokens = new Dictionary<string, string>(templateTokens ?? new Dictionary<string, string>(), StringComparer.Ordinal);
+            foreach (var (token, value) in p.Tokens ?? new Dictionary<string, string>()) tokens[token] = value;
+            return p with { BlockTemplateId = null, Tokens = tokens.Count == 0 ? null : tokens };
+        });
+
+    /// <summary>A region cannot go into itself or a region inside it, nor nest deeper than <see cref="MaxDepth"/>.</summary>
+    private static void CheckReparent(DView design, string regionId, string? parentId)
+    {
+        for (var at = parentId; at is not null; at = FindRegion(design, at)?.ParentId)
+            if (at == regionId) throw new EditException($"Region '{regionId}' cannot go inside itself.");
+        var depth = (parentId is null ? 0 : Depth(design, parentId)) + Height(design, regionId, 0);
+        if (depth > MaxDepth) throw new EditException($"Regions nest at most {MaxDepth} deep.");
+    }
+
+    /// <summary>The levels of a region and the regions inside it (1: no regions inside).</summary>
+    private static int Height(DView design, string regionId, int guard) =>
+        guard > 16 ? 1 : 1 + design.AllRegions.Where(r => r.ParentId == regionId).Select(r => Height(design, r.Id, guard + 1)).DefaultIfEmpty(0).Max();
+
+    /// <summary>Puts <paramref name="id"/> at <paramref name="index"/> among its siblings in one view (the others keep their order).</summary>
+    private static DViews Order(DViews views, string view, string id, string? parentId, int index)
+    {
+        var design = views[view];
+        var siblings = Children(design, parentId).Where(x => x != id).ToList();
+        siblings.Insert(Math.Clamp(index, 0, siblings.Count), id);
+        return views.With(view, Renumber(design, siblings));
+    }
+
     // ───────────── helpers ─────────────
 
     private static int NextOrder(DView design, string? regionId)
