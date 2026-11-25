@@ -64,6 +64,10 @@ public class AmpCheckerTests
             .ShouldContain("https");
 
     [Fact]
+    public void MediaRelativeToThePageIsFine() =>
+        AmpChecker.Check(Page("<amp-video src=\"/api/storage/items/v1/content\" layout=\"fill\"></amp-video>", AmpChecker.ExtensionScript("amp-video"))).ShouldBeEmpty();
+
+    [Fact]
     public void TheGeneratedCssFitsAmp()
     {
         System.Text.Encoding.UTF8.GetByteCount(AmpStyles.Css).ShouldBeLessThan(AmpStyles.MaxBytes);

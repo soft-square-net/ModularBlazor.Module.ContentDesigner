@@ -82,7 +82,7 @@ public class DesignHandlersTests
         Existing(Design());
         var result = await new SaveDesignHandler(_designs, _access, _clock).Handle(new SaveDesignCommand(7, 5, Samples.Design()), Ct);
         result.Status.ShouldBe(ResultStatus.Conflict);
-        await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+        await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, Ct);
     }
 
     [Fact]
@@ -107,7 +107,7 @@ public class DesignHandlersTests
 
         result.Status.ShouldBe(ResultStatus.Conflict);
         result.Errors.ShouldContain("The headline is required.");
-        await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, default);
+        await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, Ct);
     }
 
     [Fact]
@@ -169,11 +169,11 @@ public class DesignHandlersTests
         {
             await Handler().Handle(new RenderPublishedQuery("pub-7"), Ct);
             await Handler().Handle(new RenderPublishedQuery("pub-7"), Ct);
-            await _fields.ReceivedWithAnyArgs(1).BuildJsonLdAsync(default!, default, default, default, default);
+            await _fields.ReceivedWithAnyArgs(1).BuildJsonLdAsync(default!, default, default, default, Ct);
 
             _publishedAt = _publishedAt.AddMinutes(5);
             await Handler().Handle(new RenderPublishedQuery("pub-7"), Ct);
-            await _fields.ReceivedWithAnyArgs(2).BuildJsonLdAsync(default!, default, default, default, default);
+            await _fields.ReceivedWithAnyArgs(2).BuildJsonLdAsync(default!, default, default, default, Ct);
         }
 
         [Fact]

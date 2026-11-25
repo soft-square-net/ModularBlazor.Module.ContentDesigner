@@ -96,6 +96,7 @@ public static partial class AmpChecker
                     issues.Add(new("layout", $"<{tag.Name}> needs a width and height, or a fill layout."));
             }
             if (tag.Name is "amp-iframe" or "amp-video" or "amp-audio" && tag.Attributes.GetValueOrDefault("src") is { } source &&
+                !source.StartsWith('/') && // relative to the page (on Unix "/x" parses as an absolute file URI)
                 Uri.TryCreate(source, UriKind.Absolute, out var uri) && uri.Scheme != Uri.UriSchemeHttps)
                 issues.Add(new("https", $"<{tag.Name}> loads its source over https ({source})."));
         }

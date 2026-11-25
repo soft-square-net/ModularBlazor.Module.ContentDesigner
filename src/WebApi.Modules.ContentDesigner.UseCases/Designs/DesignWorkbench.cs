@@ -128,7 +128,7 @@ public sealed class DesignWorkbench(
 
     public string? CanonicalUrl(string? permalink) =>
         permalink is null ? null
-        : Uri.TryCreate(permalink, UriKind.Absolute, out _) ? permalink
+        : Uri.TryCreate(permalink, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? permalink // on Unix "/x" is an absolute file URI
         : options.Value.SiteBaseUrl.TrimEnd('/') + "/" + permalink.TrimStart('/');
 
     public string AmpUrl(string publicId) => options.Value.AmpUrlTemplate.Replace("{publicId}", Uri.EscapeDataString(publicId), StringComparison.Ordinal);
