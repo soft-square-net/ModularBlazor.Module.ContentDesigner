@@ -2,7 +2,9 @@
 
 Agreed with the product owner on 2026-11-24, through several reviews: the scope, VsDock as the guide, the
 DynamicFields/MudTail/Storage integration, four views, the newsroom workflow and Elsa. This page is the consolidated
-result; it is the reference for every phase.
+result; it is the reference for every phase. On 2026-11-25 it was aligned with the newsroom design
+(Organization, Shifts v2, NewsRoom, live sync): see [section 9](#9-aligned-with-the-newsroom-design-2026-11-25), which
+overrides the sections above wherever they differ.
 
 ## 1. What it is
 
@@ -25,8 +27,10 @@ blocks come later.
 | Module | Owns |
 |---|---|
 | **Content** | **Post/Document**: URL (slug per culture), kind, root values (headline, ...), the ordered references to contents, each pinned to an accepted version; publishing. **Content**: one paragraph/image/video/..., a shared library (a content can be used by several posts), its section and assignee, its stage, versions, Desk review (accept, reject with a note, edit as Desk). The change feed |
-| **Shifts** | Sections, including **department sections** that serve all categories (Multimedia, SEO): a flag on Section |
-| **Elsa** | The **pipeline**: stages, allowed actions per role and stage, routing of contents to sections (images → Multimedia, SEO values → SEO, text → the category's section), timers, escalations, system transitions, notifications. Elsa Studio for designing and testing workflows |
+| **Organization** | The unit tree (Org → Sector → Department → Section). Desk, Multimedia and SEO are Sections. Each Section owns a **list of post categories** |
+| **Shifts** | Shifts of a unit, the rota and attendance; the rota becomes unit-scoped grants from check-in to check-out |
+| **NewsRoom** | Proposals, moderation, the **PostProject** (Approved → InProduction → ReadyForDesk → Scheduled → Published), workflow bindings, routing rules. It adds the studio's Workflow status and Elsa Studio panes |
+| **Elsa** | The **pipeline**: a main workflow per post kind and a sub-workflow per content kind, routing, the post's assignment to a Section (and its category check), timers, escalations, system transitions, notifications. Elsa Studio for designing and testing workflows |
 | **DynamicFields** | Kinds and block fields, validation, translation overlays, the schema.org mapping and **JSON-LD** |
 | **Storage** | Assets (pinned by id and version, public URL, width/height) and the file picker |
 | **ContentDesigner** | **PostDesign** (the four-view arrangement of a post), **DocumentTemplate** and **BlockTemplate**, the studio, rendering (WASM and server HTML/AMP), the design checks |
@@ -113,12 +117,15 @@ BlockTemplate    per block field (block.video ...) and view: inner part order, s
   - Properties: placement and tokens for the view, "copy to view"; content values via `ContentEditorForm` or the
     field's EditorDialog, for the content's owner only.
   - JSON-LD.
-  - Workflow status (contributed by the Elsa client module).
+  - Workflow status (added by NewsRoom through the dock-panel contract; see section 9).
 - **Bottom:** Problems, Activity (the post's change feed).
-- **Elsa Studio:** its own app (MudBlazor) shown in an iframe pane, for Admin and Workflow Designer only.
-- **Hot reload:** the studio polls the post's change feed every 3–5 s while the post is open. It reloads only the
-  changed content and keeps the arrangement and selection. Push (SignalR) replaces the polling later behind the same
-  client interface.
+- **Elsa Studio:** its own app (MudBlazor) shown in an iframe pane, for Admin and Workflow Designer only; added by
+  NewsRoom, not by this module.
+- **Hot reload** (phase 6a, done): the studio listens on Content's live topic for the post (`content:post:{id}`) through
+  the platform's live channel; on each message it reads the post's change feed (`?after=`), which also catches up after
+  a reconnect or a gap. It reloads only the changed content and keeps the arrangement and selection. It polls the feed
+  every 4 s while the page is visible when there is no live channel, while it is not connected, or when the topic is
+  refused or revoked.
 - **Pickers by capability:** assets from Storage (`picker:asset`), concepts, terms. `PropertyKind.Lookup` brings any
   module's lookup.
 
@@ -139,41 +146,78 @@ Permissions: `contentdesigner.read`, `contentdesigner.arrange`, `contentdesigner
 
 ## 8. Phases
 
-0. **Scaffold** (this commit):
-   - `platform-module-ca` template, SDK preview.3;
-   - CI (`PACKAGES_TOKEN` secret with `read:packages`);
-   - a playground that loads DynamicFields, Content, Storage and Shifts beside it when they are built.
+Done:
+0. **Scaffold**: `platform-module-ca` template, CI, a playground that loads DynamicFields, Content, Storage and Shifts.
 1. **Content**: Post/Document + shared Contents with stages, Desk review, change feed, migration of existing posts.
 2. **Shifts**: department sections. **DynamicFields**: property groups, node ids, JSON-LD builder, `Lookup` kind,
    Asset `Accept`, pickers by capability.
-3. **Platform**:
-   - `mb-module-panel`, the dock-panel contribution contract, `Provides` on ClientDialog;
-   - UI.MudTail packs (`designer`, `monaco`, `editorial`).
-4. **ContentDesigner core**: PostDesign, templates, design rules, API; the Rendering RCL with server HTML/AMP. The Note
-   example is removed here.
-5. **Studio v1** (done; see [studio-v1-plan.md](studio-v1-plan.md)):
-   - open a post;
-   - the contents tray with stages;
-   - arranging in four views;
-   - polling hot reload, JSON-LD, Problems;
-   - document templates.
-6. **Elsa**:
-   - newsroom activities, pipeline publishing to Content, routing;
-   - the Workflow status panel;
-   - Elsa Studio in an iframe pane;
-   - test tenant and dry run.
-7. **Studio v2** (done, see [studio-v2-plan.md](studio-v2-plan.md)): drag and drop, the block template library,
-   "save block as template", AMP checks per block, focus mode, adding existing content from the library.
-8. **Going live**: Site module, AMP and canonical endpoints, the publish rule; then push updates.
-9. Later: home and section fronts, data-bound blocks.
+3. **Platform**: `mb-module-panel`, the dock-panel contribution contract, `Provides` on ClientDialog; UI.MudTail packs
+   (`designer`, `monaco`, `editorial`).
+4. **ContentDesigner core**: PostDesign, templates, design rules, API; the Rendering RCL with server HTML/AMP.
+5. **Studio v1** ([studio-v1-plan.md](studio-v1-plan.md)): open a post, the contents tray with stages, four views,
+   polling hot reload, JSON-LD, Problems, document templates.
+- **5.1 Fixes**: the stale Problems report, field titles in the contents tray, MudDock panel icons; the Platform
+  `ClientModuleCatalog` move retry (Platform #44, in preview.7).
+7. **Studio v2** ([studio-v2-plan.md](studio-v2-plan.md); moved ahead of phase 6): drag and drop, the block template
+   library, "save block as template", AMP checks per block, focus mode, adding existing content from the library.
+- **6a. Live** (on Platform preview.7): hot reload on the platform's live channel, with polling as the fallback (section
+  6). The studio's side is done; Content does not offer the post's topic yet, so the studio still polls (section 10).
 
-## 9. Known follow-ups
+Next. These phases depend on the newsroom design and wait for the newsroom build's waves 4-6 ("P2".."P5" are that
+design's phases; wave 4 is Shifts v2 and Content's newsroom core, wave 5 NewsRoom and Elsa, wave 6 the client and going
+live). Wave 4 needs the Organization module released first, and each wave starts with its own plan for approval.
+- **6b. Content model** (waits for wave 4: Content P3, and DynamicFields' URL prefix on root fields):
+  - Post.Kind is the root DynamicFields field key; document and block templates and design rules keyed by the old
+    enum are re-keyed by a data migration. Each kind's static URL comes from that field.
+  - A content's `SectionId` becomes its `UnitId`; the tray shows the unit and the work-item states (Assigned →
+    InProgress → Submitted → InReview → Accepted | Returned) instead of the old stages.
+  - The post's unit and categories are shown read only: the workflow assigns them (section 9, the category rule).
+  - Unit-scoped permissions, with the "your shift ended" state and local keeping of unsaved work (section 9).
+  - Problems also lists Content's `validate-node` / `content.validation-failed` results, without reporting a rule twice.
+  - Optional: document templates scoped by category as well as by kind.
+- **6c. Newsroom panes** (waits for wave 5: NewsRoom P4 and Elsa P5): NewsRoom adds the Workflow status and Elsa Studio
+  panes to the studio through the dock-panel contract; this module owns no Elsa logic. The studio's Publish follows the
+  PostProject's state (section 9).
+- **8. Going live** (waits for wave 6): Site module, AMP and canonical endpoints from each kind's static URL (with
+  redirects when a kind's URL changes), then push updates.
+- **Later**: home and section fronts, data-bound blocks, live presence ("who else is editing").
 
-- ModuleTemplate: `tests/Directory.Build.props` pins its own platform version (preview.2), apart from `global.json`.
-  Bumping one without the other causes NU1605 downgrade errors. This repo bumps both to preview.3.
-- The playground does not run Elsa yet: it needs its own database, a service client secret and a workflow pool.
-- Platform: `ClientModuleCatalog` installs a client module with `Directory.Move(staging, target)` and no retry. On
-  Windows a file still held open (antivirus, the indexer) makes it throw "Access to the path ... is denied", which
-  aborts every client module's seeding, so the shell does not start. Retry the move briefly.
-- MudDock takes a panel icon as markup, and a dock panel names a Lucide icon, so the studio shows its panes without icons.
-- `FieldVersionInfo` could carry the field's title, so the contents tray shows "Heading" from the field, not from its key.
+## 9. Aligned with the newsroom design (2026-11-25)
+
+The newsroom design (Organization, Shifts v2, NewsRoom, Elsa, live sync; agreed as v5) changes this plan:
+- **No Elsa or routing in this module.** The newsroom activities, routing and publishing pipeline belong to NewsRoom and
+  Elsa. The studio's Workflow status and Elsa Studio panes are dock panels that NewsRoom adds (phase 6c).
+  - Pro: no duplicated workflow logic; the dock-panel contract gets its first outside user.
+  - Con: those panes wait for NewsRoom P4 and Elsa P5.
+- **Design published ≠ post published.** The studio's Publish publishes the design only, and is enabled only while the
+  post's PostProject is InProduction or ReadyForDesk (without NewsRoom installed, it behaves as today). The post is
+  published by the Desk through NewsRoom (Scheduled → Published), guarded by Content's `validate`.
+  - Pro: one owner per state; a designer cannot publish past the Desk.
+  - Con: a soft dependency on NewsRoom's project state.
+- **Unit-scoped permissions.** The studio checks `contentdesigner.arrange` (and `.publish`) on `unit:{the post's unit}`,
+  covered by grants on its ancestors. Shift grants exist only from check-in to check-out, so the studio shows a clear
+  "your shift ended" state and keeps unsaved work locally until the user can save again. A post with no unit yet is
+  editable by the moderator and the Desk only. The playground's dev grants become unit-scoped.
+- **The category rule.** A Section owns a list of post categories, stored on its Organization unit (category ids; the
+  categories stay in Content). A post can be assigned to a unit only when at least one of its categories belongs to
+  that unit. The check is an Elsa activity (`EnsurePostInUnitCategories`), run when the moderator assigns the Section
+  and again whenever the post's categories or unit change; on failure the workflow returns the post to the moderator.
+  Only the workflow (its service identity) can set a post's unit, so the Content API offers no way around the rule.
+  The same data lets routing suggest the Section whose categories match.
+  - Pro: the rule is visible and editable per tenant in Elsa Studio; exceptions (per kind or tenant) are workflow
+    changes, not code.
+  - Con: when no workflow is bound for a kind, nothing assigns a unit; NewsRoom must treat that as a setup error.
+- **Department sections** (the Shifts flag merged in Shifts #5) are replaced by Organization units; Shifts v2 migrates
+  the Section rows into the org tree.
+
+## 10. Known follow-ups
+
+- ModuleTemplate: `tests/Directory.Build.props` pins its own platform version, apart from `global.json`. Bumping one
+  without the other causes NU1605 downgrade errors. This repo pins both to preview.7.
+- The playground does not run Elsa yet: it needs its own database, a service client secret and a workflow pool (needed
+  before wave 5).
+- Content does not offer the live topic `content:post:{id}` yet, so the hub refuses it and the studio polls.
+- The studio draws the icons of its own dock panels only (`StudioIcons`): a pane another module adds, such as NewsRoom's
+  in phase 6c, shows no icon unless the studio carries the Lucide icon it names.
+- No layout fills the platform's `blank` role, so focus mode is a full-screen frame on the studio page.
+- Studio v2's known limits and what was not verified in the browser: [studio-v2-plan.md](studio-v2-plan.md), section 8.
