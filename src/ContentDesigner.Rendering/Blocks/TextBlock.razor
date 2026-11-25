@@ -1,0 +1,7 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.text: one line of plain text. *@
+@if (Context.Text("text") is { } text)
+{
+    <p @attributes="Context.Attributes">@text</p>
+}

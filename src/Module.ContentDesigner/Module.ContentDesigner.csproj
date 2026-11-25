@@ -2,8 +2,8 @@
   <Sdk Name="soft.square.net.ModularBlazor.Module.Sdk" />
 
   <!--
-    The Blazor client module of ContentDesigner, loaded by ModularBlazor.BlzWebClient: the Notes page (list, search, add,
-    edit, delete) over the module's API.
+    The Blazor client module of ContentDesigner, loaded by ModularBlazor.BlzWebClient: for now a read-only Designs page (the
+    post designs and the document templates) over the module's API; the designer studio comes next.
 
     Shipped as soft.square.net.Module.ContentDesigner.dll alone (the client part of the module). The API client is its own
     hidden client module (WebApi.Modules.ContentDesigner.Client, listed in Dependencies): referenced here to compile, never

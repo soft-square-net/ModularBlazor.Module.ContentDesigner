@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!--
+    The Content Designer's rendering: Razor block renderers (one per DynamicFields starter block, a fallback, and AMP
+    variants), the responsive merge of the Mobile / Tablet / Desktop views into one page of data-mb-* token attributes,
+    the server page renderer (HtmlRenderer: canonical HTML and AMP) and the offline AMP checks.
+
+    One library for both sides: the server module (WebApi.Modules.ContentDesigner.UseCases) renders pages with it, and
+    the studio and the WASM site render the same components live. So it depends on nothing of the server (no Core, no
+    SharedKernel): its own small model (Model/), plain JSON values.
+
+    Components.Web is compile-only here (PrivateAssets): the server gets it from the ASP.NET Core shared framework and
+    the Blazor client from its host, so neither copies it into a module.
+  -->
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.*" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="soft.square.net.WebApi.Modules.ContentDesigner.UnitTests" />
+  </ItemGroup>
+
+</Project>

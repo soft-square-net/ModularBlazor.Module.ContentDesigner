@@ -1,0 +1,16 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.gallery on AMP: an amp-carousel of slides, 16:9, each image filling its slide. *@
+@{ var images = Context.Children().Where(i => i.Asset("image") is not null).ToList(); }
+<figure @attributes="Context.Attributes">
+    <Caption Context="Context" Keys="@(["title", "description"])" />
+    @if (images.Count > 0)
+    {
+        <amp-carousel type="slides" layout="responsive" width="16" height="9" controls="">
+            @foreach (var image in images)
+            {
+                <AmpMedia Element="amp-img" Asset="@(image.Asset("image")!)" Boxed="true" Extra="@(new Dictionary<string, object> { ["alt"] = image.Text("alt") ?? "" })" />
+            }
+        </amp-carousel>
+    }
+</figure>

@@ -1,0 +1,18 @@
+@namespace soft.square.net.ContentDesigner.Rendering
+@*
+  The designed page's body: the page element the editorial pack's container queries measure (data-mb-page), in the
+  document's language and direction, and its regions. The studio canvas, the WASM site and the server render this
+  same component.
+*@
+<article data-mb-page="" lang="@Page.Document.Culture" dir="@Page.Document.Direction">
+    @foreach (var node in Page.Children)
+    {
+        <NodeView Node="node" Page="Page" Settings="Settings" Registry="Registry" />
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public PageModel Page { get; set; } = default!;
+    [Parameter] public RenderSettings Settings { get; set; } = new();
+    [Parameter] public BlockRendererRegistry Registry { get; set; } = BlockRendererRegistry.Default;
+}

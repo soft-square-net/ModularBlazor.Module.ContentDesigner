@@ -1,0 +1,38 @@
+@namespace soft.square.net.ContentDesigner.Rendering
+@* One node of the page: a region (and its children), a root value, or a block through its renderer. *@
+@switch (Node)
+{
+    case RegionNode region:
+        if (region.Kind.Equals("Section", StringComparison.OrdinalIgnoreCase))
+        {
+            <section @attributes="region.Attributes">
+                @foreach (var child in region.Children)
+                {
+                    <NodeView Node="child" Page="Page" Settings="Settings" Registry="Registry" />
+                }
+            </section>
+        }
+        else
+        {
+            <div @attributes="region.Attributes">
+                @foreach (var child in region.Children)
+                {
+                    <NodeView Node="child" Page="Page" Settings="Settings" Registry="Registry" />
+                }
+            </div>
+        }
+        break;
+    case PropNode prop:
+        <PropView Node="prop" Page="Page" Settings="Settings" />
+        break;
+    case BlockNode block when Registry.Resolve(block.Block.FieldKey, Page.Amp) is { } component:
+        <DynamicComponent Type="component" Parameters="@(new Dictionary<string, object?> { ["Context"] = new BlockContext(block, Page.Document, Settings, Page.Amp) })" />
+        break;
+}
+
+@code {
+    [Parameter, EditorRequired] public PageNode Node { get; set; } = default!;
+    [Parameter, EditorRequired] public PageModel Page { get; set; } = default!;
+    [Parameter, EditorRequired] public RenderSettings Settings { get; set; } = default!;
+    [Parameter, EditorRequired] public BlockRendererRegistry Registry { get; set; } = default!;
+}

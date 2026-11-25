@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Behaviors;
-using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Notes.Create;
+using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Designs;
 
 namespace soft.square.net.WebApi.Modules.ContentDesigner.Web.Configurations;
 
@@ -22,7 +22,7 @@ public static class MediatorConfig
             // platform's TenantDbContext (IDomainEventHandler, in the same save), not by the mediator.
             options.Assemblies =
             [
-                typeof(CreateNoteCommand)   // UseCases
+                typeof(OpenDesignCommand)   // UseCases
             ];
 
             // Order matters: the first runs outermost.

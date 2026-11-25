@@ -1,0 +1,10 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.audio on AMP: amp-audio, one line high. *@
+@if (Context.Asset("audio") is { } audio)
+{
+    <figure @attributes="Context.Attributes">
+        <Caption Context="Context" Keys="@(["title", "description"])" />
+        <amp-audio src="@audio.Url" width="auto" height="50" layout="fixed-height" controls=""></amp-audio>
+    </figure>
+}

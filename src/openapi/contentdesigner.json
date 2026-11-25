@@ -2,8 +2,8 @@
   "openapi": "3.1.1",
   "info": {
     "title": "ContentDesigner",
-    "description": "ContentDesigner: notes per tenant (the template's example; replace with the module's own features).",
-    "version": "0.1.0"
+    "description": "Content Designer: the four-view arrangement of posts (Mobile, Tablet, Desktop, AMP), document and block templates, the design checks, and the server HTML and AMP pages.",
+    "version": "0.2.0"
   },
   "servers": [
     {
@@ -11,13 +11,13 @@
     }
   ],
   "paths": {
-    "/api/contentdesigner/notes": {
+    "/api/contentdesigner/designs": {
       "get": {
         "tags": [
-          "Notes"
+          "Designs"
         ],
-        "summary": "One page of notes, newest first.",
-        "operationId": "ContentDesigner_ListNotes",
+        "summary": "One page of post designs, the latest change first; optionally of one kind.",
+        "operationId": "ContentDesigner_ListDesigns",
         "parameters": [
           {
             "name": "page",
@@ -36,6 +36,13 @@
               "format": "int32",
               "default": 20
             }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -44,7 +51,40 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotePage"
+                  "$ref": "#/components/schemas/DesignPage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "A post's design: its four-view draft and its published state.",
+        "operationId": "ContentDesigner_GetDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
                 }
               }
             }
@@ -53,14 +93,447 @@
       },
       "post": {
         "tags": [
-          "Notes"
+          "Designs"
         ],
-        "operationId": "ContentDesigner_CreateNote",
+        "summary": "Make the post's design from a template, else the kind's default template, else the starter; 409 if it has one.",
+        "operationId": "ContentDesigner_OpenDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NewNote"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/OpenRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Replace the draft's four views; 409 if the design changed since 'version' or a view breaks a structural rule.",
+        "operationId": "ContentDesigner_SaveDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Delete the post's design and its published state.",
+        "operationId": "ContentDesigner_DeleteDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/views/{view}": {
+      "put": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Arrange one view (mobile, tablet, desktop, amp): its regions and placements, or inherit another view.",
+        "operationId": "ContentDesigner_ArrangeView",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "view",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArrangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/apply-template": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Take a document template's views (all, or the ones named) into the draft.",
+        "operationId": "ContentDesigner_ApplyTemplate",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/check": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Check the draft: design rules, DynamicFields validation, JSON-LD essentials, the AMP page.",
+        "operationId": "ContentDesigner_CheckDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/CheckRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesignReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/preview": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "The draft (or the unsaved views sent) rendered as the responsive page or the AMP page.",
+        "operationId": "ContentDesigner_PreviewDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/PreviewRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/publish": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Publish the draft once every check passes (409 lists the errors); pins the content revisions it was checked against.",
+        "operationId": "ContentDesigner_PublishDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/unpublish": {
+      "post": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Take the published design down; the public pages answer 404.",
+        "operationId": "ContentDesigner_UnpublishDesign",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnpublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDesignDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/document-templates": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "The document templates, by kind and name; optionally of one kind.",
+        "operationId": "ContentDesigner_ListDocumentTemplates",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentTemplateDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "A new document template for a kind; makeDefault makes it the kind's default.",
+        "operationId": "ContentDesigner_CreateDocumentTemplate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewDocumentTemplate"
               }
             }
           },
@@ -72,7 +545,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NoteDto"
+                  "$ref": "#/components/schemas/DocumentTemplateDto"
                 }
               }
             }
@@ -80,61 +553,12 @@
         }
       }
     },
-    "/api/contentdesigner/notes/search": {
+    "/api/contentdesigner/document-templates/{id}": {
       "get": {
         "tags": [
-          "Notes"
+          "Templates"
         ],
-        "summary": "Notes whose title or body contains the text (at least 2 characters), ignoring case.",
-        "operationId": "ContentDesigner_SearchNotes",
-        "parameters": [
-          {
-            "name": "text",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 1
-            }
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32",
-              "default": 20
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NotePage"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/contentdesigner/notes/{id}": {
-      "get": {
-        "tags": [
-          "Notes"
-        ],
-        "operationId": "ContentDesigner_GetNote",
+        "operationId": "ContentDesigner_GetDocumentTemplate",
         "parameters": [
           {
             "name": "id",
@@ -153,7 +577,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NoteDto"
+                  "$ref": "#/components/schemas/DocumentTemplateDto"
                 }
               }
             }
@@ -162,9 +586,9 @@
       },
       "put": {
         "tags": [
-          "Notes"
+          "Templates"
         ],
-        "operationId": "ContentDesigner_EditNote",
+        "operationId": "ContentDesigner_EditDocumentTemplate",
         "parameters": [
           {
             "name": "id",
@@ -181,7 +605,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NoteEdit"
+                "$ref": "#/components/schemas/DocumentTemplateEdit"
               }
             }
           },
@@ -193,7 +617,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NoteDto"
+                  "$ref": "#/components/schemas/DocumentTemplateDto"
                 }
               }
             }
@@ -202,9 +626,10 @@
       },
       "delete": {
         "tags": [
-          "Notes"
+          "Templates"
         ],
-        "operationId": "ContentDesigner_DeleteNote",
+        "summary": "Delete a document template; designs made from it keep their views.",
+        "operationId": "ContentDesigner_DeleteDocumentTemplate",
         "parameters": [
           {
             "name": "id",
@@ -232,37 +657,473 @@
           }
         }
       }
+    },
+    "/api/contentdesigner/document-templates/{id}/default": {
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Make a template its kind's default (the kind's other default stops being one), or not.",
+        "operationId": "ContentDesigner_SetDefaultTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/DefaultRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/save-as-template": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Save the post's draft as a document template of its kind (the post's own contents fall into items).",
+        "operationId": "ContentDesigner_SaveDesignAsTemplate",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveAsTemplateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/block-templates": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "The block templates; optionally of one block field and one view.",
+        "operationId": "ContentDesigner_ListBlockTemplates",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BlockTemplateDto"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "operationId": "ContentDesigner_CreateBlockTemplate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBlockTemplate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/block-templates/{id}": {
+      "get": {
+        "tags": [
+          "Templates"
+        ],
+        "operationId": "ContentDesigner_GetBlockTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Templates"
+        ],
+        "operationId": "ContentDesigner_EditBlockTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlockTemplateEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Delete a block template; the checks report placements that still name it.",
+        "operationId": "ContentDesigner_DeleteBlockTemplate",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/design/views/{view}/save-block-as-template": {
+      "post": {
+        "tags": [
+          "Templates"
+        ],
+        "summary": "Save how a content (content:{id}) is placed in a view as a block template of its field; withContent keeps its values.",
+        "operationId": "ContentDesigner_SaveBlockAsTemplate",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "view",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveBlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlockTemplateDto"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/render/{publicId}": {
+      "get": {
+        "tags": [
+          "Rendering"
+        ],
+        "summary": "The published post as its designed responsive HTML page.",
+        "operationId": "ContentDesigner_RenderPage",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "culture",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/render/{publicId}/amp": {
+      "get": {
+        "tags": [
+          "Rendering"
+        ],
+        "summary": "The published post as its designed AMP page.",
+        "operationId": "ContentDesigner_RenderAmpPage",
+        "parameters": [
+          {
+            "name": "publicId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "culture",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
-      "NewNote": {
+      "AmpIssue": {
         "required": [
-          "title",
-          "body"
+          "rule",
+          "message"
         ],
         "type": "object",
         "properties": {
-          "title": {
+          "rule": {
             "type": "string"
           },
-          "body": {
-            "type": [
-              "null",
-              "string"
-            ]
+          "message": {
+            "type": "string"
           }
         }
       },
-      "NoteDto": {
+      "ApplyRequest": {
+        "required": [
+          "version",
+          "templateId"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "templateId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "views": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ViewKind"
+            }
+          }
+        }
+      },
+      "ArrangeRequest": {
+        "required": [
+          "version",
+          "design"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "design": {
+            "$ref": "#/components/schemas/ViewDesign"
+          }
+        }
+      },
+      "BlockTemplateDto": {
         "required": [
           "id",
-          "title",
-          "body",
+          "name",
+          "fieldKey",
+          "view",
+          "partOrder",
+          "hiddenParts",
+          "tokens",
+          "content",
+          "version",
           "createdBy",
           "createdAt",
-          "updatedAt",
-          "version"
+          "updatedAt"
         ],
         "type": "object",
         "properties": {
@@ -270,11 +1131,46 @@
             "type": "integer",
             "format": "int32"
           },
-          "title": {
+          "name": {
             "type": "string"
           },
-          "body": {
+          "fieldKey": {
             "type": "string"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ViewKind"
+          },
+          "partOrder": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hiddenParts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tokens": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "content": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/JsonElement"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
           },
           "createdBy": {
             "type": "string"
@@ -286,18 +1182,13 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "version": {
-            "type": "integer",
-            "format": "int32"
           }
         }
       },
-      "NoteEdit": {
+      "BlockTemplateEdit": {
         "required": [
           "version",
-          "title",
-          "body"
+          "name"
         ],
         "type": "object",
         "properties": {
@@ -305,10 +1196,52 @@
             "type": "integer",
             "format": "int32"
           },
-          "title": {
+          "name": {
             "type": "string"
           },
-          "body": {
+          "partOrder": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "hiddenParts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tokens": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "content": { }
+        }
+      },
+      "CheckRequest": {
+        "type": "object",
+        "properties": {
+          "views": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ViewKind"
+            }
+          },
+          "culture": {
             "type": [
               "null",
               "string"
@@ -316,7 +1249,16 @@
           }
         }
       },
-      "NotePage": {
+      "DefaultRequest": {
+        "type": "object",
+        "properties": {
+          "isDefault": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      },
+      "DesignPage": {
         "required": [
           "items",
           "page",
@@ -328,7 +1270,7 @@
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/NoteDto"
+              "$ref": "#/components/schemas/DesignSummary"
             }
           },
           "page": {
@@ -344,6 +1286,723 @@
             "format": "int32"
           }
         }
+      },
+      "DesignProblem": {
+        "required": [
+          "view",
+          "severity",
+          "code",
+          "path",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "view": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewKind"
+              }
+            ]
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ProblemSeverity"
+          },
+          "code": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "DesignReport": {
+        "required": [
+          "valid",
+          "errors",
+          "warnings",
+          "problems"
+        ],
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "errors": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "warnings": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "problems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DesignProblem"
+            }
+          }
+        }
+      },
+      "DesignSummary": {
+        "required": [
+          "id",
+          "postId",
+          "publicId",
+          "kind",
+          "published",
+          "publishedVersion",
+          "version",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "postId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "publicId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "published": {
+            "type": "boolean"
+          },
+          "publishedVersion": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DesignViews": {
+        "required": [
+          "mobile",
+          "tablet",
+          "desktop",
+          "amp"
+        ],
+        "type": "object",
+        "properties": {
+          "mobile": {
+            "$ref": "#/components/schemas/ViewDesign"
+          },
+          "tablet": {
+            "$ref": "#/components/schemas/ViewDesign"
+          },
+          "desktop": {
+            "$ref": "#/components/schemas/ViewDesign"
+          },
+          "amp": {
+            "$ref": "#/components/schemas/ViewDesign"
+          }
+        }
+      },
+      "DocumentTemplateDto": {
+        "required": [
+          "id",
+          "name",
+          "description",
+          "kind",
+          "kindVersion",
+          "views",
+          "isDefault",
+          "version",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "views": {
+            "$ref": "#/components/schemas/DesignViews"
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DocumentTemplateEdit": {
+        "required": [
+          "version",
+          "name",
+          "description",
+          "views"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "views": {
+            "$ref": "#/components/schemas/DesignViews"
+          }
+        }
+      },
+      "JsonElement": { },
+      "NewBlockTemplate": {
+        "required": [
+          "name",
+          "fieldKey",
+          "view"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string"
+          },
+          "view": {
+            "$ref": "#/components/schemas/ViewKind"
+          },
+          "partOrder": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "hiddenParts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "tokens": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "content": { }
+        }
+      },
+      "NewDocumentTemplate": {
+        "required": [
+          "name",
+          "description",
+          "kind",
+          "kindVersion",
+          "views"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "views": {
+            "$ref": "#/components/schemas/DesignViews"
+          },
+          "makeDefault": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "OpenRequest": {
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "Placement": {
+        "required": [
+          "part",
+          "regionId"
+        ],
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string"
+          },
+          "regionId": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "hidden": {
+            "type": "boolean",
+            "default": false
+          },
+          "span": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tokens": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "blockTemplateId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PostDesignDto": {
+        "required": [
+          "id",
+          "postId",
+          "publicId",
+          "kind",
+          "kindVersion",
+          "basedOnTemplateId",
+          "draft",
+          "published",
+          "version",
+          "createdBy",
+          "createdAt",
+          "updatedBy",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "postId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "publicId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "basedOnTemplateId": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/DesignViews"
+          },
+          "published": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublishedDesignDto"
+              }
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PreviewDto": {
+        "required": [
+          "html",
+          "amp",
+          "cssBytes",
+          "ampIssues"
+        ],
+        "type": "object",
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "amp": {
+            "type": "boolean"
+          },
+          "cssBytes": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "ampIssues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AmpIssue"
+            }
+          }
+        }
+      },
+      "PreviewRequest": {
+        "type": "object",
+        "properties": {
+          "amp": {
+            "type": "boolean",
+            "default": false
+          },
+          "culture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "views": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DesignViews"
+              }
+            ]
+          }
+        }
+      },
+      "ProblemSeverity": {
+        "enum": [
+          "Warning",
+          "Error"
+        ],
+        "type": "string"
+      },
+      "PublishedDesignDto": {
+        "required": [
+          "designVersion",
+          "views",
+          "kindVersion",
+          "pins",
+          "publishedBy",
+          "publishedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "designVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "views": {
+            "$ref": "#/components/schemas/DesignViews"
+          },
+          "kindVersion": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "pins": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          "publishedBy": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PublishRequest": {
+        "required": [
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "culture": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "Region": {
+        "required": [
+          "id",
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RegionKind"
+          },
+          "parentId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          "hidden": {
+            "type": "boolean",
+            "default": false
+          },
+          "span": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tokens": {
+            "type": [
+              "null",
+              "object"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RegionKind": {
+        "enum": [
+          "Section",
+          "Row",
+          "Column"
+        ],
+        "type": "string"
+      },
+      "SaveAsTemplateRequest": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "makeDefault": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "SaveBlockRequest": {
+        "required": [
+          "part",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "withContent": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "SaveRequest": {
+        "required": [
+          "version",
+          "views"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "views": {
+            "$ref": "#/components/schemas/DesignViews"
+          }
+        }
+      },
+      "UnpublishRequest": {
+        "required": [
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "ViewDesign": {
+        "type": "object",
+        "properties": {
+          "regions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Region"
+            }
+          },
+          "placements": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Placement"
+            }
+          },
+          "inheritsFrom": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ViewKind"
+              }
+            ]
+          }
+        }
+      },
+      "ViewKind": {
+        "enum": [
+          "Mobile",
+          "Tablet",
+          "Desktop",
+          "Amp",
+          null
+        ]
       }
     },
     "securitySchemes": {
@@ -377,7 +2036,13 @@
   ],
   "tags": [
     {
-      "name": "Notes"
+      "name": "Designs"
+    },
+    {
+      "name": "Templates"
+    },
+    {
+      "name": "Rendering"
     }
   ]
 }

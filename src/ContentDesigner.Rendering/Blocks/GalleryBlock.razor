@@ -1,0 +1,13 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.gallery: its title and description, then its images in a grid (the columns and spacing tokens). *@
+@{ var (grid, outer) = Context.Split("columns", "spacing"); }
+<figure @attributes="outer">
+    <Caption Context="Context" Keys="@(["title", "description"])" />
+    <div @attributes="grid">
+        @foreach (var image in Context.Children())
+        {
+            <ImageBlock Context="image" />
+        }
+    </div>
+</figure>

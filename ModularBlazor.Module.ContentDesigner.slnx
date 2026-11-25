@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/WebApi.Modules.ContentDesigner.Core/WebApi.Modules.ContentDesigner.Core.csproj" />
+    <Project Path="src/ContentDesigner.Rendering/ContentDesigner.Rendering.csproj" />
     <Project Path="src/WebApi.Modules.ContentDesigner.UseCases/WebApi.Modules.ContentDesigner.UseCases.csproj" />
     <Project Path="src/WebApi.Modules.ContentDesigner.Infrastructure/WebApi.Modules.ContentDesigner.Infrastructure.csproj" />
     <Project Path="src/WebApi.Modules.ContentDesigner.Web/WebApi.Modules.ContentDesigner.Web.csproj" />

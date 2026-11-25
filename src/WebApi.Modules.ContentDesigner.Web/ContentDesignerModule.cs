@@ -13,10 +13,22 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Web;
 /// </summary>
 public sealed class ContentDesignerModule : IRuntimeModule
 {
-    public ModuleManifest Manifest { get; } = new("contentdesigner", "ContentDesigner", "0.1.0", "contentdesigner")
+    public ModuleManifest Manifest { get; } = new("contentdesigner", "ContentDesigner", "0.2.0", "contentdesigner")
     {
-        Description = "ContentDesigner: notes per tenant (the template's example; replace with the module's own features).",
-        DefaultSettings = new Dictionary<string, string?> { ["ContentDesigner:MaxPageSize"] = "100" },
+        Description = "Content Designer: the four-view arrangement of posts (Mobile, Tablet, Desktop, AMP), document and block templates, the design checks, and the server HTML and AMP pages.",
+        DefaultSettings = new Dictionary<string, string?>
+        {
+            ["ContentDesigner:MaxPageSize"] = "100",
+            ["ContentDesigner:ApiBaseUrl"] = "http://localhost:5080",
+            ["ContentDesigner:SiteBaseUrl"] = "",
+            ["ContentDesigner:AmpUrlTemplate"] = "/api/contentdesigner/render/{publicId}/amp",
+            ["ContentDesigner:AssetUrlTemplate"] = "/api/storage/items/{id}/content",
+            ["ContentDesigner:Stylesheets"] = "/_content/soft.square.net.UI.MudTail/css/mudtail.min.css,/_content/soft.square.net.UI.MudTail/css/packs/editorial.min.css",
+            ["ContentDesigner:RenderCacheMinutes"] = "10",
+            ["ContentDesigner:ServiceAuthority"] = "",
+            ["ContentDesigner:ServiceClientId"] = "",
+            ["ContentDesigner:ServiceClientSecret"] = ""
+        },
         Permissions = ContentDesignerPermissions.All
     };
 

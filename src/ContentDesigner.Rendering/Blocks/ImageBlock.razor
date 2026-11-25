@@ -1,0 +1,13 @@
+@namespace soft.square.net.ContentDesigner.Rendering.Blocks
+@inherits BlockComponent
+@* block.image: the aspect token boxes the image (its own element, so the caption is never cropped). *@
+@if (Context.Asset("image") is { } image)
+{
+    var (media, outer) = Context.Split("aspect");
+    <figure @attributes="outer">
+        <div @attributes="media">
+            <img src="@image.Url" alt="@(Context.Text("alt") ?? "")" loading="lazy" decoding="async" width="@image.Width" height="@image.Height" />
+        </div>
+        <Caption Context="Context" />
+    </figure>
+}
