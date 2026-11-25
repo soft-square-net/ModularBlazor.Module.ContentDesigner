@@ -156,7 +156,7 @@ sets the page context `content.post` to the post id; every pane finds the open s
 | Properties | right | The view's inheritance (give it its own design, or inherit another); for the selection: region, order, span, hidden, tokens, its block template (pick, detach keeping its look, save as one, for this view or all four), copy to another view, take it out |
 | JSON-LD | right | The post's JSON-LD, from the last check |
 | Problems | bottom | The checks of the unsaved views, filtered by view, with the AMP CSS budget; a problem selects what it names |
-| Activity | bottom | The post's change feed; the studio polls it every 4 seconds while visible and reloads what the sections change |
+| Activity | bottom | The post's change feed; the studio reads it on each live message for the post (`content:post:{id}`), or every 4 seconds while visible when live updates are not available, and reloads what the sections change |
 
 Views only reorder, hide and restyle one content tree: Mobile, Tablet and Desktop share their regions, so a structural
 edit in one applies to every web view with a design of its own; AMP has its own tree. A view that inherits another is
