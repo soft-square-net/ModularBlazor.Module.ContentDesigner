@@ -63,7 +63,8 @@ public static class Samples
         "block.gallery" => new(key, 1, "ImageGallery", [new("title", "Title", "Text", false, false, "name")],
             [new("columns", ["1", "2", "3", "4", "6"], true), new("spacing", ["none", "sm", "md", "lg", "xl"], true)]),
         "block.video" => new(key, 1, "VideoObject", [new("video", "Video", "Asset", true, false, "contentUrl"), new("thumbnail", "Thumbnail", "Asset", true, false, "thumbnailUrl")],
-            [new("width", ["content", "wide", "full", "half", "third"], true), new("aspect", ["auto", "1-1", "4-3", "3-2", "16-9", "21-9"], true)]),
+            [new("width", ["content", "wide", "full", "half", "third"], true), new("aspect", ["auto", "1-1", "4-3", "3-2", "16-9", "21-9"], true)],
+            "Video clip"),
         _ => new(key, 1, "WebPageElement", [new("text", "Text", "RichText", true, false, "text")],
             [new("align", ["start", "center", "end"], false), new("size", ["sm", "md", "lg", "xl"], true), new("tone", ["default", "muted", "accent", "inverse"], false),
              new("spacing", ["none", "sm", "md", "lg", "xl"], true)])

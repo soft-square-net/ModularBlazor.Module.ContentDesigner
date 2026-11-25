@@ -70,6 +70,7 @@
 .cd-problem__icon { width: 1.2em; text-align: center; }
 .cd-problem--error .cd-problem__icon { color: var(--mud-palette-error); }
 .cd-problem--warning .cd-problem__icon { color: var(--mud-palette-warning); }
+.cd-list.is-stale, .cd-budget.is-stale { opacity: .6; } /* the Problems report of views that changed since the Check */
 
 .cd-tree, .cd-tree ul { list-style: none; margin: 0; padding: 0; }
 .cd-tree ul { padding-inline-start: 14px; border-inline-start: 1px dashed var(--mud-palette-lines-default); margin-inline-start: 6px; }

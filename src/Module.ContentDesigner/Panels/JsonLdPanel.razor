@@ -1,12 +1,18 @@
 @inherits StudioPanelBase
 @*
   The post's JSON-LD as DynamicFields builds it from the kind and each content's schema.org mapping (from the last
-  check). It is the same in every view: views change the layout, never the data.
+  check, marked out of date after an edit). It is the same in every view: views change the layout, never the data.
 *@
 
 <div class="cd-panel cd-jsonld">
   @if (Session?.Report?.JsonLd is { } jsonLd)
   {
+    @if (Session.ReportStale)
+    {
+      <p class="cd-warn" role="status">Out of date: the design changed since this check.
+        <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small"
+                disabled="@Session.Checking" @onclick="CheckAsync">Check again</button></p>
+    }
     <CodeView Value="@Pretty(jsonLd)" Language="json" Label="JSON-LD" />
   }
   else

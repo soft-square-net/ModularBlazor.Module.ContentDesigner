@@ -21,7 +21,7 @@ public sealed class FieldsApi(Gateway gateway, IMemoryCache cache, ITenantContex
 
     private sealed record StyleWire(string Key, List<string>? Values, bool Responsive);
 
-    private sealed record SnapshotWire(string Key, int Version, string? SchemaType, List<PropertyWire>? Properties, List<StyleWire>? Style);
+    private sealed record SnapshotWire(string Key, int Version, string? Title, string? SchemaType, List<PropertyWire>? Properties, List<StyleWire>? Style);
 
     private sealed record VersionWire(SnapshotWire Field);
 
@@ -42,7 +42,8 @@ public sealed class FieldsApi(Gateway gateway, IMemoryCache cache, ITenantContex
 
         var info = new FieldVersionInfo(field.Key, field.Version, field.SchemaType ?? "",
             [.. (field.Properties ?? []).Select(p => new FieldValueInfo(p.Key, p.Label ?? p.Key, Kind(p.Kind), p.Required, p.Multiple, p.SchemaProperty))],
-            [.. (field.Style ?? []).Select(s => new FieldStyleInfo(s.Key, s.Values ?? [], s.Responsive))]);
+            [.. (field.Style ?? []).Select(s => new FieldStyleInfo(s.Key, s.Values ?? [], s.Responsive))],
+            string.IsNullOrWhiteSpace(field.Title) ? null : field.Title);
         if (version > 0)
             cache.Set(cacheKey, info, new MemoryCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(1), Size = 1 });
         return info;

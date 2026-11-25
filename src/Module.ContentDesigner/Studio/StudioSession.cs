@@ -65,6 +65,15 @@ public sealed class StudioSession
     public DesignReport? Report { get; private set; }
     public bool Checking { get; private set; }
 
+    /// <summary>
+    /// True when the views or the culture changed since <see cref="Report"/> was made: the report is shown as out of
+    /// date until the next Check (an undo back to the checked views makes it current again).
+    /// </summary>
+    public bool ReportStale => Report is not null && (!ReferenceEquals(_checkedViews, Views) || _checkedCulture != Culture);
+
+    private DViews? _checkedViews;
+    private string? _checkedCulture;
+
     /// <summary>The post's change feed, newest first, and the last event id read.</summary>
     public List<FeedEvent> Activity { get; } = [];
     public long LastEvent { get; private set; }
@@ -381,13 +390,17 @@ public sealed class StudioSession
     /// <summary>The checks (and the JSON-LD) of the views as edited, without saving them.</summary>
     public async Task<bool> CheckAsync()
     {
-        if (Views is null) return false;
+        if (Views is not { } views) return false;
+        var culture = Culture;
         Checking = true;
         Notify();
         try
         {
             return await RunAsync(async api =>
-                Report = await api.CheckDesignAsync(PostId, new CheckRequest { Design = StudioJson.ToApi(Views), Culture = Culture }), toast: false);
+            {
+                Report = await api.CheckDesignAsync(PostId, new CheckRequest { Design = StudioJson.ToApi(views), Culture = culture });
+                (_checkedViews, _checkedCulture) = (views, culture);
+            }, toast: false);
         }
         finally
         {

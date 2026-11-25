@@ -233,7 +233,7 @@
     {
       key = p.Id,
       title = p.LocalTitle,
-      icon = "", // MudDock takes an icon as markup; a contribution names a Lucide icon, which the dock cannot draw
+      icon = StudioIcons.Svg(p.Icon), // MudDock takes markup; a contribution names a Lucide icon
       document = p.Document,
       component = StudioPanels.RootComponent,
     }).ToList();

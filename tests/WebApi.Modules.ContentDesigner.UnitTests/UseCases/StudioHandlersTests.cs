@@ -32,7 +32,8 @@ public class StudioHandlersTests
         var workspace = result.Value;
         workspace.Post.ShouldBe(new WorkspacePost(7, "pub-7", "Final day at the venue", "post.news", 2, 3, "/news/final-day"));
         workspace.Contents.Select(c => c.ContentId).ShouldBe([Samples.Heading, Samples.Paragraph, Samples.Image, Samples.Gallery, Samples.Video]);
-        workspace.Contents[4].FieldLabel.ShouldBe("Video");
+        workspace.Contents[4].FieldLabel.ShouldBe("Video clip"); // the field's title
+        workspace.Contents[0].FieldLabel.ShouldBe("Heading"); // no title in the snapshot: a label made from the key
         workspace.Contents[0].Stage.ShouldBe("accepted");
 
         // The renderer's document names the top-level blocks by content id, in the post's language and direction.
