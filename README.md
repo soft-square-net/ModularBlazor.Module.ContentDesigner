@@ -7,10 +7,12 @@ them in four views: Mobile, Tablet, Desktop and AMP. It checks each view against
 automatically, and saves block and document templates. See [docs/design-plan.md](docs/design-plan.md) for the agreed
 plan and its phases.
 
-> **Status: phase 7, studio v2.** The designer's model, checks, templates, rendering (HTML and AMP), API and the
-> studio (`/contentdesigner/studio/{postId}`, which arranges a post in its four views) are in, with drag and drop, the
-> block template library, AMP checks per block and focus mode. See [docs/studio-v1-plan.md](docs/studio-v1-plan.md)
-> and [docs/studio-v2-plan.md](docs/studio-v2-plan.md).
+> **Status: phases 5.1, 7 (studio v2) and 6a.** The designer's model, checks, templates, rendering (HTML and AMP), API
+> and the studio (`/contentdesigner/studio/{postId}`, which arranges a post in its four views) are in, with drag and
+> drop, the block template library, AMP checks per block, focus mode and hot reload on the platform's live channel
+> (polling until Content offers the post's topic). See [docs/studio-v1-plan.md](docs/studio-v1-plan.md) and
+> [docs/studio-v2-plan.md](docs/studio-v2-plan.md). The next phases follow the newsroom design (Organization, NewsRoom,
+> Elsa, live sync): see the design plan's sections 8 and 9.
 
 ## Layout
 
