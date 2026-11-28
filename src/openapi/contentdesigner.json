@@ -410,7 +410,7 @@
         "tags": [
           "Designs"
         ],
-        "summary": "Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.",
+        "summary": "Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction, ReadyForDesk or Published, 503 when that cannot be told; pins the content revisions it was checked against.",
         "operationId": "ContentDesigner_PublishDesign",
         "parameters": [
           {

@@ -30,13 +30,15 @@ public class ShiftRightsTests
         public int PublishCalls { get; private set; }
         public int Unpublishes { get; private set; }
 
+        private static bool Allowed(string state) => state is "InProduction" or "ReadyForDesk" or "Published";
+
         private object? Publishing() => ProjectState is not { } state ? null : new
         {
-            allows = state is "InProduction" or "ReadyForDesk",
-            status = state is "InProduction" or "ReadyForDesk" ? "open" : "closed",
+            allows = Allowed(state),
+            status = Allowed(state) ? "open" : "closed",
             projectId = "0190b5a1-0000-7000-8000-0000000000aa",
             projectState = state,
-            message = state is "InProduction" or "ReadyForDesk" ? null : $"The post's NewsRoom project is {state}."
+            message = Allowed(state) ? null : $"The post's NewsRoom project is {state}."
         };
 
         private object Rights() => new
@@ -70,7 +72,7 @@ public class ShiftRightsTests
             if (path.EndsWith("/design/publish", StringComparison.Ordinal))
             {
                 PublishCalls++;
-                return ProjectState is null or "InProduction" or "ReadyForDesk"
+                return ProjectState is null || Allowed(ProjectState)
                     ? Json(Design())
                     : Problem(HttpStatusCode.Conflict, $"The post's NewsRoom project is {ProjectState}.");
             }
@@ -145,6 +147,8 @@ public class ShiftRightsTests
     [InlineData(null, true)]
     [InlineData("InProduction", true)]
     [InlineData("ReadyForDesk", true)]
+    [InlineData("Published", true)]
+    [InlineData("Scheduled", false)]
     [InlineData("NeedsModeration", false)]
     public async Task Publish_follows_the_newsroom_project(string? state, bool open)
     {

@@ -192,8 +192,8 @@ The newsroom design (Organization, Shifts v2, NewsRoom, Elsa, live sync; agreed 
   - Pro: no duplicated workflow logic; the dock-panel contract gets its first outside user.
   - Con: those panes wait for NewsRoom P4 and Elsa P5.
 - **Design published ≠ post published.** The studio's Publish publishes the design only, and is enabled only while the
-  post's PostProject is InProduction or ReadyForDesk (without NewsRoom installed, it behaves as today). The post is
-  published by the Desk through NewsRoom (Scheduled → Published), guarded by Content's `validate`.
+  post's PostProject is InProduction, ReadyForDesk or Published, the last for design fixes (without NewsRoom installed,
+  it behaves as today). The post is published by the Desk through NewsRoom (Scheduled → Published), guarded by Content's `validate`.
   - Pro: one owner per state; a designer cannot publish past the Desk.
   - Con: a soft dependency on NewsRoom's project state.
 - **Unit-scoped permissions.** The studio checks `contentdesigner.arrange` (and `.publish`) on `unit:{the post's unit}`,

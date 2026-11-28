@@ -29,15 +29,18 @@ public static class PublishGateStatuses
 public sealed record PublishGateDto(bool Allows, string Status, Guid? ProjectId = null, string? ProjectState = null, string? Message = null);
 
 /// <summary>
-/// A post with a NewsRoom project may be published only while the project is InProduction or ReadyForDesk. A post without
-/// a project, and a deployment without NewsRoom, are not gated. When that cannot be told (NewsRoom does not answer, or
-/// nobody asked may see every project) publishing waits: letting it through would skip the workflow for the very posts it
-/// controls.
+/// A post with a NewsRoom project may be published only while the project is InProduction or ReadyForDesk, or once it is
+/// Published, so a design fix can go out again. NewsRoom normally gives a post one project; of several, one at work opens
+/// the gate, but a Published one only when it is the newest: Published is final, so an older one would otherwise overrule
+/// every later project for good. A post without a project, and a deployment without NewsRoom, are not gated. When that
+/// cannot be told (NewsRoom does not answer, or nobody asked may see every project) publishing waits: letting it through
+/// would skip the workflow for the very posts it controls.
 /// </summary>
 public sealed class PublishGate(INewsRoomApi newsRoom)
 {
     // NewsRoom's state names (its Contracts package is not published, so no reference).
-    private static readonly string[] PublishableStates = ["InProduction", "ReadyForDesk"];
+    private static readonly string[] AtWorkStates = ["InProduction", "ReadyForDesk"];
+    private const string PublishedState = "Published";
 
     /// <summary>The caller's rights with the workflow's say, asked only for a caller who may publish at all.</summary>
     public async Task<PostRightsDto> AddToAsync(PostRightsDto rights, CancellationToken ct) =>
@@ -60,11 +63,12 @@ public sealed class PublishGate(INewsRoomApi newsRoom)
         }
         if (found.Projects.Count == 0) return new PublishGateDto(true, PublishGateStatuses.NoProject);
 
-        var open = found.Projects.FirstOrDefault(p => PublishableStates.Contains(p.State, StringComparer.OrdinalIgnoreCase));
+        var newest = found.Projects[0]; // NewsRoom lists the newest first
+        var open = found.Projects.FirstOrDefault(p => AtWorkStates.Contains(p.State, StringComparer.OrdinalIgnoreCase))
+                   ?? (PublishedState.Equals(newest.State, StringComparison.OrdinalIgnoreCase) ? newest : null);
         if (open is not null) return new PublishGateDto(true, PublishGateStatuses.Open, open.Id, open.State);
 
-        var project = found.Projects[0]; // NewsRoom lists the newest first
-        return new PublishGateDto(false, PublishGateStatuses.Closed, project.Id, project.State,
-            $"The post's NewsRoom project is {project.State}: its design can be published only while the project is InProduction or ReadyForDesk.");
+        return new PublishGateDto(false, PublishGateStatuses.Closed, newest.Id, newest.State,
+            $"The post's NewsRoom project is {newest.State}: its design can be published only while the project is InProduction, ReadyForDesk or Published.");
     }
 }
