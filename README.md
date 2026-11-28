@@ -101,6 +101,7 @@ header or the token's tenant). Edits send the `version` they read and get 409 if
 | `GET /library?fieldKey=&stage=&sectionId=&unitId=&skip=&take=` | `read` | Content's shared library: contents to add to a post |
 | `GET /library/{contentId}` | `read` | One library content with its render block (the picker's preview) |
 | `POST /posts/{postId}/contents` `{ postVersion, contentId, index?, required, culture? }` | `arrange` | Add an existing content to the post (not required by default); returns the workspace; 409 if the post moved on |
+| `PUT /posts/{postId}/text` `{ part, key?, text, expected?, culture? }` | `read` | Edit one plain text value in place (`prop:{key}`, or `content:{id}` with its key) through Content, which decides who may; DynamicFields Text values only (one line); 409 when the text changed since `expected`; returns the workspace |
 | `POST /posts/{postId}/design/views/{view}/save-block-as-template` `{ part, name, withContent, design? }` | `templates` | Save how a content shows in a view as a block template (from the unsaved views when `design` is sent) |
 | `GET /render/{publicId}?culture=` | anonymous | The published post as its responsive HTML page |
 | `GET /render/{publicId}/amp?culture=` | anonymous | The published post as its AMP page |

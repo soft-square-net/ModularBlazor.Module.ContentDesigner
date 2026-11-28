@@ -727,6 +727,69 @@
         }
       }
     },
+    "/api/contentdesigner/posts/{postId}/text": {
+      "put": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "Edit one plain text value of the post or of one of its contents, through Content (409 when it changed meanwhile). Returns the workspace.",
+        "operationId": "ContentDesigner_EditText",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/contentdesigner/kinds": {
       "get": {
         "tags": [
@@ -2818,6 +2881,40 @@
           },
           "views": {
             "$ref": "#/components/schemas/DesignViews"
+          }
+        }
+      },
+      "TextEdit": {
+        "required": [
+          "part",
+          "key",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string"
+          },
+          "key": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "expected": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "culture": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

@@ -95,7 +95,8 @@ public sealed record LibraryContent(
     Guid? UnitId = null);
 
 /// <summary>One library content with its values: Content's <c>PostNode</c> (<c>{ nodeId, schemaId, schemaVersion, content, style, children }</c>).</summary>
-public sealed record LibraryContentDetail(LibraryContent Content, JsonElement Node);
+/// <summary>One library content with its values (<see cref="Node"/>: Content's node) and its version, for an edit.</summary>
+public sealed record LibraryContentDetail(LibraryContent Content, JsonElement Node, int Version = 0);
 
 /// <summary>The library's filters (Content's <c>GET /contents</c>).</summary>
 public sealed record LibraryFilter(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20,
@@ -127,6 +128,15 @@ public interface IContentApi
 
     /// <summary>Uses a library content in the post (Content's <c>POST /posts/{id}/contents</c>), at the post's version.</summary>
     Task AttachContentAsync(int postId, int postVersion, string contentId, int? index, bool required, CancellationToken ct);
+
+    /// <summary>
+    /// New values of a content (Content's <c>PUT /contents/{id}</c>: a new revision, by the stage's editors), at the
+    /// version the caller saw; <paramref name="values"/> is the whole node.
+    /// </summary>
+    Task EditContentAsync(string contentId, int version, JsonElement values, CancellationToken ct);
+
+    /// <summary>The values of the post's kind (Content's <c>PUT /posts/{id}/root</c>), with the root's style kept.</summary>
+    Task SetPostRootAsync(int postId, int version, int fieldVersion, JsonElement content, JsonElement style, CancellationToken ct);
 }
 
 public sealed record FieldValueInfo(string Key, string Label, string Kind, bool Required, bool Multiple, string? SchemaProperty);
