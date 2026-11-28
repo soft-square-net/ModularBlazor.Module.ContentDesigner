@@ -1,4 +1,5 @@
 using Ardalis.Specification;
+using soft.square.net.WebApi.Modules.ContentDesigner.Core.Designs;
 using soft.square.net.WebApi.Modules.ContentDesigner.Core.PostDesignAggregate;
 using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Designs;
 using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Ports;
@@ -49,6 +50,28 @@ public class StudioHandlersTests
         workspace.KindValues.Select(v => v.Key).ShouldContain("headline");
         workspace.FieldStyles["block.image"]["aspect"].ShouldContain("16-9");
         workspace.Design.ShouldNotBeNull().PostId.ShouldBe(7);
+    }
+
+    /// <summary>
+    /// A post Content's UI made before posts got their kind's root: the check still blocks it, with one error that says what
+    /// to do, instead of "legacy.basic is not published" and an unknown "headline".
+    /// </summary>
+    [Fact]
+    public async Task ALegacyRootIsOneErrorThatSaysWhatToDo()
+    {
+        var fields = Bench.Fields(issues: [new ContentIssue("/field", "Field 'legacy.basic' version 1 is not published.")]);
+        fields.GetFieldVersionAsync("legacy.basic", 1, Arg.Any<CancellationToken>()).Returns(Task.FromResult<FieldVersionInfo?>(null));
+        var post = Samples.Post() with { KindVersion = 1, DocumentSchemaId = "legacy.basic" };
+
+        var problems = await Bench.Workbench(fields).CheckAsync(Samples.Design(), 1, post, null, null, Ct);
+
+        var error = problems.Where(p => p.Path == "/field").ShouldHaveSingleItem();
+        error.Severity.ShouldBe(ProblemSeverity.Error);
+        error.Message.ShouldContain("'post.news'");
+        error.Message.ShouldContain("Contents Management");
+        problems.ShouldNotContain(p => p.Message.Contains("legacy.basic"));
+        problems.ShouldNotContain(p => p.Message.Contains("has no value 'headline'"));
+        problems.HasErrors().ShouldBeTrue();
     }
 
     [Fact]

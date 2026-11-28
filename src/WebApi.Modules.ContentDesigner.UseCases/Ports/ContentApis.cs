@@ -49,6 +49,11 @@ public sealed record ContentPost(
     /// legacy document (made from a title and a body), which has no DynamicFields field.
     /// </summary>
     public string DocumentField => DocumentSchemaId is { Length: > 0 } schema ? schema : Kind;
+
+    /// <summary>Content's schema of a document made from a title and a body only: no values of the post's kind.</summary>
+    public const string LegacyRoot = "legacy.basic";
+
+    public bool HasLegacyRoot => DocumentField == LegacyRoot;
 }
 
 /// <summary>A published post (Content's anonymous <c>GET /public/{publicId}?culture=</c>).</summary>
