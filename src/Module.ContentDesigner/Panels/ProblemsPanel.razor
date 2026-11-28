@@ -2,7 +2,8 @@
 @*
   The checks of the views as edited (POST .../design/check with the unsaved views): the design rules, DynamicFields'
   validation, the JSON-LD essentials and the AMP page (each AMP issue a block causes names that block). Errors block
-  publishing; warnings do not. A problem that names a placement or a region selects it, in its view. Filter by view;
+  publishing; warnings do not. What Content refused a step with (its validation: the feed, live, and 422 answers) shows
+  here too, joined with the check's finding of the same node. A problem that names a placement or a region selects it, in its view. Filter by view;
   the AMP page's CSS shows against AMP's limit. An edit (or a culture change) after a Check marks the report out of date.
 *@
 
@@ -46,22 +47,30 @@
     </div>
   }
 
-  @if (Session?.Report is { } shown)
+  @if (Session is not null && (Session.Report is not null || _problems.Count > 0))
   {
-    @if (shown.Problems.Count == 0)
+    @if (_problems.Count == 0)
     {
       <p class="cd-ok">No problems.</p>
     }
     <ul class="cd-list @(Session.ReportStale ? "is-stale" : "")">
-      @foreach (var problem in shown.Problems.Where(Shows).OrderByDescending(p => p.Severity).ThenBy(p => p.View?.Value))
+      @foreach (var problem in _problems.Where(Shows).OrderByDescending(p => p.Refused).ThenByDescending(p => p.Severity).ThenBy(p => p.View))
       {
         <li class="cd-list__item cd-problem cd-problem--@problem.Severity.ToString().ToLowerInvariant()" @onclick="() => Go(problem)">
           <span class="cd-problem__icon" aria-hidden="true">@(problem.Severity == ProblemSeverity.Error ? "✖" : "⚠")</span>
           <span class="cd-list__main">
             <span class="cd-list__title">@problem.Message</span>
             <span class="cd-list__meta">
-              <span class="cd-tag">@(problem.View is { } v ? Views.Label(v.Value.ToString()) : "all views")</span>
+              @if (problem.Refusal is { } refusal)
+              {
+                <span class="cd-tag cd-tag--warn">Content refused@(refusal.Action is { } action ? $": {action}" : "")</span>
+              }
+              <span class="cd-tag">@(problem.View is { } v ? Views.Label(v) : "all views")</span>
               <span class="cd-muted">@problem.Code</span>
+              @if (NodeContent(problem.NodeId) is { } about)
+              {
+                <span class="cd-muted">@about</span>
+              }
               @if (problem.Path is { Length: > 0 } path)
               {
                 <span class="cd-muted">@path</span>
@@ -72,7 +81,7 @@
       }
     </ul>
   }
-  else if (Session?.Error is { } error)
+  else if (Session?.Error is { } error && Session.Report is null)
   {
     <p class="cd-error" role="alert">@error</p>
   }
@@ -88,20 +97,41 @@
 
   private string _filter = "";
 
-  /// <summary>A problem of the whole design (no view) shows under every view.</summary>
-  private bool Shows(DesignProblem problem) => _filter.Length == 0 || problem.View is null || problem.View.Value.ToString() == _filter;
+  private IReadOnlyList<StudioProblem> _problems = [];
 
-  private int Count(string filter) =>
-    Session?.Report?.Problems.Count(p => filter.Length == 0 || p.View is null || p.View.Value.ToString() == filter) ?? 0;
+  protected override void OnSessionAttached() => _problems = Session?.Problems ?? [];
+
+  protected override void OnSessionChanged() => _problems = Session?.Problems ?? [];
+
+  /// <summary>A problem of the whole design (no view) shows under every view.</summary>
+  private bool Shows(StudioProblem problem) => _filter.Length == 0 || problem.View is null || problem.View == _filter;
+
+  private int Count(string filter) => _problems.Count(p => filter.Length == 0 || p.View is null || p.View == filter);
+
+  /// <summary>The post's content a node belongs to, when it is one of the post's own.</summary>
+  private WorkspaceContent? ContentOf(string? nodeId) =>
+    nodeId is null ? null : Session?.Workspace?.Contents.FirstOrDefault(c => c.NodeId == nodeId);
+
+  private string? NodeContent(string? nodeId) =>
+    ContentOf(nodeId) is { } content ? StudioText.Content(Session!, content.ContentId) : null;
 
   private Task CheckAsync() => Session?.CheckAsync() ?? Task.CompletedTask;
 
-  /// <summary>Selects what a problem's path names: /{view}/placements/{n} or /{view}/regions/{n}.</summary>
-  private void Go(DesignProblem problem)
+  /// <summary>
+  /// Selects what a problem is about: the content whose node it is in, else what its path names
+  /// (/{view}/placements/{n} or /{view}/regions/{n}).
+  /// </summary>
+  private void Go(StudioProblem problem)
   {
     if (Session?.Views is not { } views) return;
+    if (ContentOf(problem.NodeId) is { } content)
+    {
+      if (problem.View is { } shownIn) Session.SelectView(shownIn);
+      Session.Select("content:" + content.ContentId);
+      return;
+    }
     var segments = (problem.Path ?? "").Trim('/').Split('/');
-    var view = problem.View?.Value.ToString()
+    var view = problem.View
       ?? Views.All.FirstOrDefault(v => string.Equals(v, segments.ElementAtOrDefault(0), StringComparison.OrdinalIgnoreCase));
     if (view is null) return;
     Session.SelectView(view);

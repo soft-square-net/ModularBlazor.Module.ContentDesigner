@@ -15,7 +15,7 @@ public sealed class ListDesignsHandler(IReadRepository<PostDesign> designs, IOpt
     {
         var paging = DesignResults.CheckPage(query.Page, query.PageSize, options.Value.MaxPageSize);
         if (!paging.IsSuccess) return paging.As<DesignPage>();
-        var spec = new DesignsPageSpec(query.Page, query.PageSize, query.Kind);
+        var spec = new DesignsPageSpec(query.Page, query.PageSize, PostKindKeys.Normalize(query.Kind));
         var items = await designs.ListAsync(spec, ct);
         return new DesignPage([.. items.Select(DesignSummary.From)], query.Page, query.PageSize, await designs.CountAsync(spec, ct));
     }

@@ -24,6 +24,10 @@ public class StudioV2HandlersTests
     private readonly IReadRepository<PostDesign> _designs = Substitute.For<IReadRepository<PostDesign>>();
     private readonly IContentApi _content = Substitute.For<IContentApi>();
 
+    private DesignRights Rights() => Bench.Rights(Bench.AllowEverything(Substitute.For<IAccessScopes>()), _content);
+
+    private GetWorkspaceHandler Workspaces() => new(_designs, _content, Bench.Workbench(), Bench.Organization(), Rights());
+
     public StudioV2HandlersTests() => _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns(Samples.Post());
 
     private PostDesign Existing()
@@ -105,7 +109,7 @@ public class StudioV2HandlersTests
         var dto = new WorkspaceDto(new WorkspacePost(7, "pub-7", "T", "post.news", 2, 4, null), [], null!, [], new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>(), null);
         workspace.Send(Arg.Any<GetWorkspaceQuery>(), Arg.Any<CancellationToken>()).Returns(Result<WorkspaceDto>.Success(dto));
 
-        var result = await new AttachContentHandler(_content, workspace).Handle(new AttachContentCommand(7, 3, Shared, 2), Ct);
+        var result = await new AttachContentHandler(_content, workspace, Rights()).Handle(new AttachContentCommand(7, 3, Shared, 2), Ct);
 
         result.Value.ShouldBe(dto);
         await _content.Received().AttachContentAsync(7, 3, Shared, 2, false, Arg.Any<CancellationToken>()); // not required by default
@@ -118,7 +122,7 @@ public class StudioV2HandlersTests
         _content.AttachContentAsync(7, 2, Shared, null, true, Arg.Any<CancellationToken>())
             .Returns(_ => throw new ExternalApiException("Content", 409, "Post 7 is at version 3, not 2."));
 
-        var result = await new AttachContentHandler(_content, Substitute.For<ISender>()).Handle(new AttachContentCommand(7, 2, Shared, Required: true), Ct);
+        var result = await new AttachContentHandler(_content, Substitute.For<ISender>(), Rights()).Handle(new AttachContentCommand(7, 2, Shared, Required: true), Ct);
 
         result.Status.ShouldBe(ResultStatus.Conflict);
     }
@@ -126,7 +130,7 @@ public class StudioV2HandlersTests
     [Fact]
     public async Task AttachingNothingIsInvalid()
     {
-        var result = await new AttachContentHandler(_content, Substitute.For<ISender>()).Handle(new AttachContentCommand(7, 3, " "), Ct);
+        var result = await new AttachContentHandler(_content, Substitute.For<ISender>(), Rights()).Handle(new AttachContentCommand(7, 3, " "), Ct);
         result.Status.ShouldBe(ResultStatus.Invalid);
         await _content.DidNotReceiveWithAnyArgs().AttachContentAsync(default, default, default!, default, default, Ct);
     }
@@ -136,7 +140,7 @@ public class StudioV2HandlersTests
     [Fact]
     public async Task TheWorkspaceListsEachBlockFieldsValuesForTheInnerPartsEditor()
     {
-        var result = await new GetWorkspaceHandler(_designs, _content, Bench.Workbench()).Handle(new GetWorkspaceQuery(7), Ct);
+        var result = await Workspaces().Handle(new GetWorkspaceQuery(7), Ct);
         var fields = result.Value.BlockFields.ShouldNotBeNull();
         fields["block.image"].ShouldBe([new WorkspaceBlockValue("image", "Image"), new WorkspaceBlockValue("alt", "Alt")]);
         fields.Keys.ShouldContain("block.video");

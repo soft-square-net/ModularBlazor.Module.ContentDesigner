@@ -61,7 +61,22 @@ public static class StudioText
     {
         var what = e.Type.Contains('.') ? e.Type[(e.Type.IndexOf('.') + 1)..].Replace('-', ' ') : e.Type;
         var about = e.ContentId is { } id ? Content(session, id) : "the post";
-        return e.Stage is { Length: > 0 } stage ? $"{about}: {what} ({stage})" : $"{about}: {what}";
+        if (e.Type == "content.validation-failed") return $"{about}: refused by Content's validation";
+        return e.Stage is { Length: > 0 } stage ? $"{about}: {what} ({Stage(stage)})" : $"{about}: {what}";
+    }
+
+    /// <summary>The newsroom stages of a content, in the order work moves through them.</summary>
+    public static readonly string[] Stages = ["assigned", "in-progress", "submitted", "in-review", "accepted", "returned"];
+
+    /// <summary>"in-progress" → "in progress".</summary>
+    public static string Stage(string stage) => stage.Replace('-', ' ').ToLowerInvariant();
+
+    /// <summary>A unit's name in the UI's language; its id's start when Organization did not name it.</summary>
+    public static string Unit(Guid unitId, string? nameEn, string? nameAr)
+    {
+        var arabic = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+        var name = arabic ? nameAr ?? nameEn : nameEn ?? nameAr;
+        return string.IsNullOrWhiteSpace(name) ? $"unit {unitId.ToString()[..8]}" : name;
     }
 
     /// <summary>A stage's badge style: the theme's palette, by how far the content is.</summary>
@@ -70,6 +85,7 @@ public static class StudioText
         "accepted" or "published" or "approved" => "cd-stage cd-stage--done",
         "rejected" or "returned" => "cd-stage cd-stage--back",
         "submitted" or "review" or "in-review" => "cd-stage cd-stage--review",
+        "in-progress" => "cd-stage cd-stage--work",
         _ => "cd-stage"
     };
 

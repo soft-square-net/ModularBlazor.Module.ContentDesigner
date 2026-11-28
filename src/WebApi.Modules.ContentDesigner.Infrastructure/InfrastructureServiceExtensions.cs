@@ -14,7 +14,7 @@ public static class InfrastructureServiceExtensions
     /// <list type="bullet">
     /// <item>the tenant DbContext, and through it <c>IRepository&lt;T&gt;</c> / <c>IReadRepository&lt;T&gt;</c> for every
     /// aggregate root (PostDesign, DocumentTemplate, BlockTemplate);</item>
-    /// <item>the typed HTTP clients of Content and DynamicFields, through the gateway;</item>
+    /// <item>the HTTP clients of Content, DynamicFields and Organization, through the gateway;</item>
     /// <item>the module's memory cache (field versions, rendered pages), size-limited.</item>
     /// </list>
     /// </summary>
@@ -29,6 +29,8 @@ public static class InfrastructureServiceExtensions
         services.AddHttpClient<Gateway>(client => client.Timeout = TimeSpan.FromSeconds(15));
         services.AddScoped<IContentApi, ContentApi>();
         services.AddScoped<IFieldsApi, FieldsApi>();
+        services.AddHttpClient(OrganizationApi.ClientName, client => client.Timeout = TimeSpan.FromSeconds(10));
+        services.AddScoped<IOrganizationApi, OrganizationApi>();
         return services;
     }
 }

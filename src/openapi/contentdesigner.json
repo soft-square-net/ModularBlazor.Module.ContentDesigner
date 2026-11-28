@@ -619,6 +619,14 @@
               "format": "int32",
               "default": 20
             }
+          },
+          {
+            "name": "unitId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -702,6 +710,97 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkspaceDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/kinds": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "The post kinds a template or design can be for: DynamicFields' root post fields, with their URL prefixes.",
+        "operationId": "ContentDesigner_ListPostKinds",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PostKindInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/units": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "The Organization units' names, for filters; empty when Organization is not there or does not answer the caller.",
+        "operationId": "ContentDesigner_ListUnits",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnitName"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contentdesigner/posts/{postId}/rights": {
+      "get": {
+        "tags": [
+          "Designs"
+        ],
+        "summary": "What the caller may do with the post's design now: arrange and publish on its unit, press or categories (a shift's rights come and go).",
+        "operationId": "ContentDesigner_GetPostRights",
+        "parameters": [
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostRightsDto"
                 }
               }
             }
@@ -1585,6 +1684,12 @@
           },
           "message": {
             "type": "string"
+          },
+          "nodeId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1851,6 +1956,12 @@
           "at": {
             "type": "string",
             "format": "date-time"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -1939,6 +2050,13 @@
           "archived": {
             "type": "boolean",
             "default": false
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -2191,6 +2309,79 @@
           }
         }
       },
+      "PostKindInfo": {
+        "required": [
+          "key",
+          "title",
+          "description",
+          "schemaType",
+          "urlPrefix",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "schemaType": {
+            "type": "string"
+          },
+          "urlPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "PostRightsDto": {
+        "required": [
+          "postId",
+          "canArrange",
+          "canPublish",
+          "reason",
+          "unitId"
+        ],
+        "type": "object",
+        "properties": {
+          "postId": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "canArrange": {
+            "type": "boolean"
+          },
+          "canPublish": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "PreviewDto": {
         "required": [
           "html",
@@ -2239,6 +2430,42 @@
               {
                 "$ref": "#/components/schemas/DesignViews"
               }
+            ]
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
             ]
           }
         }
@@ -2594,6 +2821,26 @@
           }
         }
       },
+      "UnitName": {
+        "required": [
+          "id",
+          "nameEn",
+          "nameAr"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nameEn": {
+            "type": "string"
+          },
+          "nameAr": {
+            "type": "string"
+          }
+        }
+      },
       "UnpublishRequest": {
         "required": [
           "version"
@@ -2660,6 +2907,31 @@
           },
           "label": {
             "type": "string"
+          }
+        }
+      },
+      "WorkspaceCategory": {
+        "required": [
+          "id",
+          "nameEn",
+          "nameAr"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "nameEn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "nameAr": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2750,6 +3022,31 @@
           },
           "drift": {
             "type": "boolean"
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "unitNameEn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitNameAr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "assigneeName": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2815,6 +3112,16 @@
                 "$ref": "#/components/schemas/WorkspaceBlockValue"
               }
             }
+          },
+          "rights": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PostRightsDto"
+              }
+            ]
           }
         }
       },
@@ -2856,6 +3163,40 @@
               "null",
               "string"
             ]
+          },
+          "urlPrefix": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "unitNameEn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "unitNameAr": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "categories": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceCategory"
+            }
           }
         }
       },

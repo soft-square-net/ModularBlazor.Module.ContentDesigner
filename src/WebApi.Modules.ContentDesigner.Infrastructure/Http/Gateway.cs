@@ -62,14 +62,31 @@ public sealed class Gateway(HttpClient http, IHttpContextAccessor accessor, ITen
     {
         var text = await response.Content.ReadAsStringAsync(ct);
         var detail = text;
+        List<ContentValidationProblem> problems = [];
         try
         {
             using var problem = JsonDocument.Parse(text);
             if (problem.RootElement.TryGetProperty("detail", out var d) && d.GetString() is { Length: > 0 } s) detail = s;
             else if (problem.RootElement.TryGetProperty("title", out var t) && t.GetString() is { Length: > 0 } title) detail = title;
+            problems = Problems(problem.RootElement);
         }
-        catch (JsonException) { }
-        return new ExternalApiException(service, (int)response.StatusCode, detail.Length > 300 ? detail[..300] : detail);
+        catch (Exception e) when (e is JsonException or InvalidOperationException) { }
+        return new ExternalApiException(service, (int)response.StatusCode, detail.Length > 300 ? detail[..300] : detail, problems);
+    }
+
+    /// <summary>The <c>problems</c> of a 422 (<c>[{ path, message, nodeId }]</c>): DynamicFields' findings, as Content passes them on.</summary>
+    private static List<ContentValidationProblem> Problems(JsonElement problem)
+    {
+        List<ContentValidationProblem> found = [];
+        if (problem.ValueKind != JsonValueKind.Object || !problem.TryGetProperty("problems", out var list) || list.ValueKind != JsonValueKind.Array)
+            return found;
+        foreach (var item in list.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object) continue;
+            string? Text(string name) => item.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+            if (Text("message") is { Length: > 0 } message) found.Add(new ContentValidationProblem(Text("path") ?? "", message, Text("nodeId")));
+        }
+        return found;
     }
 }
 

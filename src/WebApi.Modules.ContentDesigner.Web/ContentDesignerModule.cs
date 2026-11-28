@@ -27,7 +27,8 @@ public sealed class ContentDesignerModule : IRuntimeModule
             ["ContentDesigner:RenderCacheMinutes"] = "10",
             ["ContentDesigner:ServiceAuthority"] = "",
             ["ContentDesigner:ServiceClientId"] = "",
-            ["ContentDesigner:ServiceClientSecret"] = ""
+            ["ContentDesigner:ServiceClientSecret"] = "",
+            ["ContentDesigner:UnitlessEditorPermissions"] = "newsroom.moderate,content.accept,content.publish"
         },
         Permissions = ContentDesignerPermissions.All
     };

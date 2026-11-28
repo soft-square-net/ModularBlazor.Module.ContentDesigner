@@ -1,7 +1,7 @@
 @using soft.square.net.ContentDesigner.Rendering
 @inject IHttpClientFactory HttpClients
 @*
-  "Add existing content": Content's shared library, filtered by block field, stage and section, without the contents
+  "Add existing content": Content's shared library, filtered by block field, stage and unit, without the contents
   the post has already. A floating panel, not a modal: its rows are palette items, so one can be dragged straight onto
   the canvas (added to the post, then placed where it lands). Selecting a row previews it with its block renderer; "Add"
   puts it in the post, unplaced (it shows through "items") or in the selected region. Not required by default.
@@ -23,12 +23,21 @@
     </select>
     <select class="cd-select" aria-label="Stage" @bind="_stage">
       <option value="">Any stage</option>
-      @foreach (var stage in Stages)
+      @foreach (var stage in StudioText.Stages)
       {
-        <option value="@stage">@stage</option>
+        <option value="@stage">@StudioText.Stage(stage)</option>
       }
     </select>
-    <input class="cd-input cd-input--short" aria-label="Section" placeholder="section" @bind="_section" />
+    @if (_units.Count > 0)
+    {
+      <select class="cd-select" aria-label="Unit" @bind="_unit">
+        <option value="">Any unit</option>
+        @foreach (var unit in _units)
+        {
+          <option value="@unit.Id">@StudioText.Unit(unit.Id, unit.NameEn, unit.NameAr)</option>
+        }
+      </select>
+    }
     <button type="submit" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small" disabled="@_loading">Search</button>
   </form>
 
@@ -43,8 +52,8 @@
           <span class="cd-list__main">
             <span class="cd-list__title">@RenderMapping.Label(item.FieldKey) <span class="cd-muted">@Short(item.ContentId)</span></span>
             <span class="cd-list__meta">
-              <span class="@StudioText.StageClass(item.Stage)">@item.Stage</span>
-              @if (item.SectionId is { } section) { <span class="cd-muted">§ @section</span> }
+              <span class="@StudioText.StageClass(item.Stage)">@StudioText.Stage(item.Stage)</span>
+              @if (item.UnitId is { } unitId) { <span class="cd-tag cd-tag--unit">@UnitLabel(unitId)</span> }
               <span class="cd-muted">@item.UpdatedAt.ToLocalTime().ToString("g")</span>
             </span>
           </span>
@@ -84,14 +93,13 @@
 
 @code {
   private const int PageSize = 20;
-  private static readonly string[] Stages = ["accepted", "submitted", "draft", "returned"];
-
   [Parameter, EditorRequired] public StudioSession Session { get; set; } = default!;
   [Parameter] public EventCallback OnClose { get; set; }
 
   private string _field = "";
   private string _stage = "accepted";
-  private string _section = "";
+  private string _unit = "";
+  private IReadOnlyList<UnitName> _units = [];
   private readonly List<LibraryContent> _items = [];
   private bool _more;
   private bool _loading;
@@ -118,8 +126,15 @@
     _ => null
   };
 
+  private string UnitLabel(Guid id)
+  {
+    var unit = _units.FirstOrDefault(u => u.Id == id);
+    return StudioText.Unit(id, unit?.NameEn, unit?.NameAr);
+  }
+
   protected override async Task OnInitializedAsync()
   {
+    _units = await Session.UnitsAsync();
     _settings = RenderMapping.Settings(HttpClients.CreateClient(HttpClientNames.WebApi).BaseAddress);
     await SearchAsync(reset: true);
   }
@@ -129,7 +144,7 @@
     if (reset) { _items.Clear(); _selected = null; }
     _loading = true;
     _error = null;
-    var page = await Session.LibraryAsync(Empty(_field), Empty(_stage), Empty(_section), _items.Count, PageSize);
+    var page = await Session.LibraryAsync(Empty(_field), Empty(_stage), Guid.TryParse(_unit, out var unit) ? unit : null, _items.Count, PageSize);
     _loading = false;
     _searched = true;
     if (page is null) { _error = Session.Error; return; }

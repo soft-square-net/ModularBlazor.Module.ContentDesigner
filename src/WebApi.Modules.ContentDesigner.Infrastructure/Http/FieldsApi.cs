@@ -31,6 +31,16 @@ public sealed class FieldsApi(Gateway gateway, IMemoryCache cache, ITenantContex
 
     private sealed record JsonLdWire(JsonElement JsonLd, List<IssueWire>? Skipped);
 
+    private sealed record RootPostFieldWire(string Key, string? Title, string? Description, string? SchemaType, string? UrlPrefix, int Version);
+
+    public async Task<IReadOnlyList<PostKindInfo>> ListPostKindsAsync(CancellationToken ct)
+    {
+        var items = await Gateway.ReadAsync<List<RootPostFieldWire>>(Service,
+            await gateway.SendAsync(Service, HttpMethod.Get, "/api/dynamicfields/catalog/root-post-fields", null, ct), ct);
+        return [.. (items ?? []).Select(f => new PostKindInfo(f.Key, string.IsNullOrWhiteSpace(f.Title) ? f.Key : f.Title, f.Description,
+            f.SchemaType ?? "", f.UrlPrefix, f.Version))];
+    }
+
     public async Task<FieldVersionInfo?> GetFieldVersionAsync(string key, int version, CancellationToken ct)
     {
         var cacheKey = $"contentdesigner-field|{tenant.TenantId}|{key}|{version}";

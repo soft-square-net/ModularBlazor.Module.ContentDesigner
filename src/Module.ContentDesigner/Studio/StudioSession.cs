@@ -10,7 +10,7 @@ namespace soft.square.net.Module.ContentDesigner.Studio;
 /// workspace, the unsaved views with undo, the current view and selection, the last check and the change feed, and
 /// raises <see cref="Changed"/> after every change. Calls to the API go through <see cref="RunAsync"/>.
 /// </summary>
-public sealed class StudioSession
+public sealed partial class StudioSession
 {
     private const int UndoDepth = 50;
     private const int ActivityKept = 100;
@@ -20,10 +20,17 @@ public sealed class StudioSession
     private readonly Func<string, string, ValueTask> _toast;
     private readonly Stack<DViews> _undo = new();
     private readonly Stack<DViews> _redo = new();
+    private readonly IDraftStore? _drafts;
+    private readonly string _owner;
     private int _busy;
 
-    public StudioSession(int postId, Func<ContentDesignerClient> api, Func<Exception, string> describe, Func<string, string, ValueTask> toast)
+    /// <param name="drafts">Where unsaved work is kept while it may not be saved (null: only while the page is open).</param>
+    /// <param name="owner">Who is signed in, so people sharing a browser keep their own copies.</param>
+    public StudioSession(int postId, Func<ContentDesignerClient> api, Func<Exception, string> describe, Func<string, string, ValueTask> toast,
+        IDraftStore? drafts = null, string? owner = null)
     {
+        _drafts = drafts;
+        _owner = string.IsNullOrWhiteSpace(owner) ? "anonymous" : owner;
         PostId = postId;
         _api = api;
         _describe = describe;
@@ -57,6 +64,7 @@ public sealed class StudioSession
 
     public void ShowLibrary(bool open)
     {
+        if (open && Locked) return;
         if (LibraryOpen == open) return;
         LibraryOpen = open;
         Notify();
@@ -78,6 +86,14 @@ public sealed class StudioSession
     public List<FeedEvent> Activity { get; } = [];
     public long LastEvent { get; private set; }
 
+    /// <summary>What Content refused the post or its contents with, and has not accepted since.</summary>
+    public ContentRefusals Refusals { get; } = new();
+
+    /// <summary>The Problems panel: the last check's findings with Content's refusals joined in.</summary>
+    public IReadOnlyList<StudioProblem> Problems => ContentRefusals.Merge(Report?.Problems?.ToList() ?? [], Refusals.All, Document);
+
+    private string? NodeOf(string contentId) => Workspace?.Contents.FirstOrDefault(c => c.ContentId == contentId)?.NodeId;
+
     /// <summary>Content ids that changed in the last reload, for the canvas and the tray to flash.</summary>
     public IReadOnlySet<string> ChangedContents { get; private set; } = new HashSet<string>();
 
@@ -97,24 +113,42 @@ public sealed class StudioSession
 
     // ───────────── loading ─────────────
 
-    /// <summary>Opens the post: its workspace, a design (made from the kind's default when it has none), the templates.</summary>
-    public Task<bool> OpenAsync() => RunAsync(async api =>
+    /// <summary>
+    /// Opens the post: its workspace, a design (made from the kind's default when it has none, and the caller may arrange
+    /// the post), the templates, the feed (for what Content refused) and any work kept from an earlier visit.
+    /// </summary>
+    public async Task<bool> OpenAsync()
+    {
+        var opened = await RunAsync(LoadAsync);
+        if (opened) await RestoreKeptAsync();
+        return opened;
+    }
+
+    private async Task LoadAsync(ContentDesignerClient api)
     {
         var workspace = await api.GetWorkspaceAsync(PostId, Culture);
-        var design = workspace.Design ?? await api.OpenDesignAsync(PostId, new OpenRequest());
         Accept(workspace);
-        TakeDesign(design, clearHistory: true);
+        if (workspace.Rights is { } rights) await ApplyRightsAsync(rights);
+        var design = workspace.Design ?? (Locked ? null : await api.OpenDesignAsync(PostId, new OpenRequest()));
+        if (design is not null) TakeDesign(design, clearHistory: true);
 
         await LoadBlockTemplatesAsync(api);
         Templates = await api.ListDocumentTemplatesAsync(workspace.Post.Kind);
 
-        // Start the feed at its end: the studio shows what happens from now on.
+        // The whole feed: the activity shows its end, and the refusals it still holds open are Problems.
         var page = await api.GetPostEventsAsync(PostId, 0);
-        while (page.More) page = await api.GetPostEventsAsync(PostId, page.Last);
+        var events = page.Events.ToList();
+        while (page.More)
+        {
+            page = await api.GetPostEventsAsync(PostId, page.Last);
+            events.AddRange(page.Events);
+        }
         LastEvent = page.Last;
+        Refusals.Clear();
+        foreach (var e in events) Refusals.Apply(e, NodeOf);
         Activity.Clear();
-        Activity.AddRange(page.Events.Reverse().Take(20));
-    });
+        Activity.AddRange(events.AsEnumerable().Reverse().Take(20));
+    }
 
     private async Task LoadBlockTemplatesAsync(ContentDesignerClient api)
     {
@@ -127,8 +161,10 @@ public sealed class StudioSession
     /// <summary>The post again (after a change in Content), keeping the design, the edits and the selection.</summary>
     public Task<bool> ReloadPostAsync(IReadOnlySet<string>? changed = null) => RunAsync(async api =>
     {
-        Accept(await api.GetWorkspaceAsync(PostId, Culture));
+        var workspace = await api.GetWorkspaceAsync(PostId, Culture);
+        Accept(workspace);
         ChangedContents = changed ?? new HashSet<string>();
+        if (workspace.Rights is { } rights) await ApplyRightsAsync(rights);
     }, toast: false);
 
     private void Accept(WorkspaceDto workspace)
@@ -154,6 +190,11 @@ public sealed class StudioSession
     public bool Edit(Func<DViews, DViews> edit, string? select = null)
     {
         if (Views is null) return false;
+        if (Locked)
+        {
+            _ = _toast("The design is read only now: you may not change it.", "warning");
+            return false;
+        }
         DViews next;
         try { next = edit(Views); }
         catch (EditException e)
@@ -201,7 +242,7 @@ public sealed class StudioSession
 
     public void Undo()
     {
-        if (Views is null || _undo.Count == 0) return;
+        if (Locked || Views is null || _undo.Count == 0) return;
         _redo.Push(Views);
         Views = _undo.Pop();
         Notify();
@@ -209,7 +250,7 @@ public sealed class StudioSession
 
     public void Redo()
     {
-        if (Views is null || _redo.Count == 0) return;
+        if (Locked || Views is null || _redo.Count == 0) return;
         _undo.Push(Views);
         Views = _redo.Pop();
         Notify();
@@ -218,7 +259,7 @@ public sealed class StudioSession
     /// <summary>Drops the unsaved edits.</summary>
     public void Revert()
     {
-        if (!Dirty || Saved is null) return;
+        if (Locked || !Dirty || Saved is null) return;
         Push(Views!);
         Views = Saved;
         Notify();
@@ -270,7 +311,7 @@ public sealed class StudioSession
     /// <summary>A drop on the canvas: one edit (undoable), or a library content added to the post and then placed.</summary>
     public async Task<bool> DropAsync(CanvasDrop drop)
     {
-        if (Views is null) return false;
+        if (Views is null || Locked) return false;
         DropPlan plan;
         try
         {
@@ -289,11 +330,19 @@ public sealed class StudioSession
 
     // ───────────── the library ─────────────
 
-    public async Task<LibraryPage?> LibraryAsync(string? fieldKey, string? stage, string? sectionId, int skip, int take)
+    public async Task<LibraryPage?> LibraryAsync(string? fieldKey, string? stage, Guid? unitId, int skip, int take)
     {
         LibraryPage? page = null;
-        await RunAsync(async api => page = await api.ListLibraryAsync(fieldKey, stage, sectionId, skip, take), toast: false);
+        await RunAsync(async api => page = await api.ListLibraryAsync(fieldKey, stage, null, skip, take, unitId), toast: false);
         return page;
+    }
+
+    /// <summary>The units to filter the library by; empty when Organization does not name any.</summary>
+    public async Task<IReadOnlyList<UnitName>> UnitsAsync()
+    {
+        IReadOnlyList<UnitName> units = [];
+        await RunAsync(async api => units = [.. await api.ListUnitsAsync()], toast: false);
+        return units;
     }
 
     public async Task<LibraryItemDto?> LibraryItemAsync(string contentId)
@@ -310,6 +359,7 @@ public sealed class StudioSession
     public Task<bool> AttachAsync(string contentId, bool required, string? regionId = null, int index = int.MaxValue) => RunAsync(async api =>
     {
         if (Workspace is null) return;
+        if (Locked) throw new InvalidOperationException("You may not change this post now.");
         if (Workspace.Contents.Any(c => c.ContentId == contentId))
         {
             await _toast("That content is in the post already.", "info");
@@ -374,15 +424,38 @@ public sealed class StudioSession
 
     // ───────────── saving and the API ─────────────
 
-    public Task<bool> SaveAsync() => RunAsync(async api =>
+    /// <summary>Saves the draft; while the design may not be changed, keeps the work and saves it when it may again.</summary>
+    public async Task<bool> SaveAsync()
     {
-        if (!Dirty || Design is null || Views is null) return;
-        var edited = Views;
-        var saved = await api.SaveDesignAsync(PostId, new SaveRequest { Version = Design.Version, Views = StudioJson.ToApi(edited) });
-        Design = saved;
-        Views = Saved = edited; // keep the instance: the canvas and the undo stack refer to it
-        await _toast("Design saved.", "success");
-    });
+        if (Locked)
+        {
+            if (Dirty)
+            {
+                SavePending = true;
+                await KeepAsync();
+                await _toast("Not saved yet: your work is kept and will be saved when your rights return.", "warning");
+                Notify();
+            }
+            return false;
+        }
+        var saved = await RunAsync(async api =>
+        {
+            if (!Dirty || Design is null || Views is null) return;
+            var edited = Views;
+            Design = await api.SaveDesignAsync(PostId, new SaveRequest { Version = Design.Version, Views = StudioJson.ToApi(edited) });
+            Views = Saved = edited; // keep the instance: the canvas and the undo stack refer to it
+            SavePending = false;
+            await DropKeptAsync();
+            await _toast("Design saved.", "success");
+        });
+        if (!saved && Locked && Dirty)
+        {
+            SavePending = true; // the server refused this save: it is owed
+            await KeepAsync();
+            Notify();
+        }
+        return saved;
+    }
 
     /// <summary>Saves first when there are unsaved edits (template and publish actions work on the stored draft).</summary>
     private async Task<bool> SavedFirstAsync() => !Dirty || await SaveAsync();
@@ -454,7 +527,7 @@ public sealed class StudioSession
 
     public async Task<bool> PublishAsync()
     {
-        if (!await SavedFirstAsync()) return false;
+        if (!CanPublish || !await SavedFirstAsync()) return false;
         return await RunAsync(async api =>
         {
             Design = await api.PublishDesignAsync(PostId, new PublishRequest { Version = Design!.Version, Culture = Culture });
@@ -464,7 +537,7 @@ public sealed class StudioSession
 
     public async Task<bool> UnpublishAsync()
     {
-        if (!await SavedFirstAsync()) return false;
+        if (!CanPublish || !await SavedFirstAsync()) return false;
         return await RunAsync(async api =>
         {
             Design = await api.UnpublishDesignAsync(PostId, new UnpublishRequest { Version = Design!.Version });
@@ -495,6 +568,11 @@ public sealed class StudioSession
             } while (page.More && !ct.IsCancellationRequested);
             LastEvent = after;
         }
+        catch (ContentDesignerApiException e) when (e.StatusCode == 403 && Rights?.CanArrange == true)
+        {
+            await VerifyRightsAsync(ct);
+            return false;
+        }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             return false; // the next nudge or tick tries again; the toolbar shows nothing for a missed read
@@ -503,10 +581,14 @@ public sealed class StudioSession
 
         Activity.InsertRange(0, events.AsEnumerable().Reverse());
         if (Activity.Count > ActivityKept) Activity.RemoveRange(ActivityKept, Activity.Count - ActivityKept);
-        var changed = events.Select(e => e.ContentId).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var refused = false;
+        foreach (var e in events) refused |= Refusals.Apply(e, NodeOf);
+        // A refusal changes nothing in Content, so its contents are not marked as changed.
+        var changed = events.Where(e => e.Type != "content.validation-failed").Select(e => e.ContentId).OfType<string>().ToHashSet(StringComparer.Ordinal);
         await ReloadPostAsync(changed);
         Notify();
-        if (Report is not null) await CheckAsync();
+        // After a refusal, check at once: the designer's own findings then sit beside Content's.
+        if (Report is not null || refused) await CheckAsync();
         return true;
     }
 
@@ -526,6 +608,10 @@ public sealed class StudioSession
         catch (Exception e)
         {
             Error = _describe(e);
+            if (e is ContentDesignerApiException { StatusCode: 422 } refusal)
+                Refusals.Add(null, ContentRefusals.FromAnswer(refusal.Response));
+            // Refused after the server allowed it: the rights may have ended.
+            if (e is ContentDesignerApiException { StatusCode: 403 } && Rights?.CanArrange == true) await VerifyRightsAsync();
             if (toast) await _toast(Error, "error");
             return false;
         }

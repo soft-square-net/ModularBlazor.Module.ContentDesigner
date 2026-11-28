@@ -104,13 +104,13 @@ public sealed class DesignWorkbench(
     public async Task<(IReadOnlyList<DesignProblem> Problems, string? JsonLd, int? AmpCssBytes)> CheckWithJsonLdAsync(DesignViews views, int designKindVersion,
         ContentPost post, IReadOnlyCollection<ViewKind>? only, string? culture, CancellationToken ct)
     {
-        var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
+        var postFields = await FieldsAsync(post.DocumentField, post.KindVersion, BlockFields(post.Document), ct);
         var context = await ContextAsync(views, post, postFields, ct);
         var problems = DesignRules.Check(views, designKindVersion, context, only).ToList();
 
         var tree = PostDocuments.ToFieldsTree(post.Document);
         foreach (var issue in await fields.ValidateAsync(tree, ct))
-            problems.Add(new(null, ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message));
+            problems.Add(new(null, ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message, PostDocuments.NodeAt(post.Document, issue.Path)));
 
         var jsonLd = await fields.BuildJsonLdAsync(tree, JsonLdUrl(post.Permalink), culture, Assets(post.Document, postFields), ct);
         if (jsonLd is null)
@@ -295,7 +295,7 @@ public sealed class DesignWorkbench(
     /// <summary>The draft as a page, with the post's working document and its JSON-LD.</summary>
     public async Task<RenderedPage> RenderDraftAsync(DesignViews views, ContentPost post, bool amp, string? culture, CancellationToken ct)
     {
-        var postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
+        var postFields = await FieldsAsync(post.DocumentField, post.KindVersion, BlockFields(post.Document), ct);
         var jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), JsonLdUrl(post.Permalink), culture,
             Assets(post.Document, postFields), ct);
         var document = Document(post, postFields, culture, jsonLd?.JsonLd);
@@ -312,7 +312,7 @@ public sealed class DesignWorkbench(
         JsonLdResult? jsonLd = null;
         try
         {
-            postFields = await FieldsAsync(post.Kind, post.KindVersion, BlockFields(post.Document), ct);
+            postFields = await FieldsAsync(post.DocumentField, post.KindVersion, BlockFields(post.Document), ct);
             jsonLd = await fields.BuildJsonLdAsync(PostDocuments.ToFieldsTree(post.Document), JsonLdUrl(post.Permalink), culture,
                 Assets(post.Document, postFields), ct);
         }

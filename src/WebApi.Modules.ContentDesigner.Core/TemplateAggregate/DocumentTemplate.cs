@@ -29,7 +29,8 @@ public sealed class DocumentTemplate : AggregateRoot<int>, ITenantOwned
     public static DocumentTemplate Create(string name, string? description, string kind, int kindVersion, DesignViews views, string by, DateTimeOffset now)
     {
         if (string.IsNullOrWhiteSpace(by)) throw new DomainException("A template needs its author.");
-        if (string.IsNullOrWhiteSpace(kind) || kind.Length > PostDesignAggregate.PostDesign.KindMaxLength) throw new DomainException("A template is for a kind (a root field key).");
+        kind = PostKindKeys.Normalize(kind);
+        if (kind.Length == 0 || kind.Length > PostDesignAggregate.PostDesign.KindMaxLength) throw new DomainException("A template is for a kind (a root field key).");
         if (kindVersion < 1) throw new DomainException("A template is made on a published version of its kind.");
         var template = new DocumentTemplate { Kind = kind, KindVersion = kindVersion, CreatedBy = by, CreatedAt = now, UpdatedAt = now };
         template.Set(name, description, views);

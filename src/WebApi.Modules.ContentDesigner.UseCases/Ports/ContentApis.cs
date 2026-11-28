@@ -18,11 +18,14 @@ public sealed record PostContentInfo(
     string? SectionId = null,
     string? AssigneeId = null,
     string? ReviewNote = null,
-    bool Drift = false);
+    bool Drift = false,
+    Guid? UnitId = null);
 
 /// <summary>
-/// A post as the designer needs it (Content's <c>GET /posts/{id}</c>): its kind, its working document
-/// (<c>{ schemaId, schemaVersion, content, style, children: [{ nodeId, schemaId, ... }] }</c>) and its contents.
+/// A post as the designer needs it (Content's <c>GET /posts/{id}</c>): its kind (a DynamicFields root post field key),
+/// its working document (<c>{ schemaId, schemaVersion, content, style, children: [{ nodeId, schemaId, ... }] }</c>),
+/// its contents, and how it is filed: its press, its categories (the primary one first), and the Organization unit the
+/// workflow put it in, with the unit's path (null: no unit yet).
 /// </summary>
 public sealed record ContentPost(
     int Id,
@@ -33,7 +36,20 @@ public sealed record ContentPost(
     int KindVersion,
     int Version,
     JsonElement Document,
-    IReadOnlyList<PostContentInfo> Contents);
+    IReadOnlyList<PostContentInfo> Contents,
+    string? PressId = null,
+    IReadOnlyList<string>? Categories = null,
+    Guid? UnitId = null,
+    string? UnitPath = null,
+    string? UrlPrefix = null,
+    string? DocumentSchemaId = null)
+{
+    /// <summary>
+    /// The field whose version the document is written against: its root schema id. It is the kind itself, except for a
+    /// legacy document (made from a title and a body), which has no DynamicFields field.
+    /// </summary>
+    public string DocumentField => DocumentSchemaId is { Length: > 0 } schema ? schema : Kind;
+}
 
 /// <summary>A published post (Content's anonymous <c>GET /public/{publicId}?culture=</c>).</summary>
 public sealed record PublishedPost(
@@ -45,9 +61,16 @@ public sealed record PublishedPost(
     string Kind,
     int KindVersion,
     JsonElement Document,
-    IReadOnlyList<string> ServedLanguages);
+    IReadOnlyList<string> ServedLanguages,
+    string? DocumentSchemaId = null)
+{
+    /// <inheritdoc cref="ContentPost.DocumentField"/>
+    public string DocumentField => DocumentSchemaId is { Length: > 0 } schema ? schema : Kind;
+}
 
-public sealed record FeedEvent(long Id, string Type, int? PostId, string? ContentId, int Version, int? Revision, string? Stage, string By, DateTimeOffset At);
+/// <summary>One row of Content's change feed. <see cref="Detail"/> says more about some rows (a refused validation: its problems).</summary>
+public sealed record FeedEvent(long Id, string Type, int? PostId, string? ContentId, int Version, int? Revision, string? Stage, string By, DateTimeOffset At,
+    string? Detail = null);
 
 public sealed record FeedPage(IReadOnlyList<FeedEvent> Events, long Last, bool More);
 
@@ -63,13 +86,18 @@ public sealed record LibraryContent(
     string? SectionId,
     string? AssigneeId,
     DateTimeOffset UpdatedAt,
-    bool Archived = false);
+    bool Archived = false,
+    Guid? UnitId = null);
 
 /// <summary>One library content with its values: Content's <c>PostNode</c> (<c>{ nodeId, schemaId, schemaVersion, content, style, children }</c>).</summary>
 public sealed record LibraryContentDetail(LibraryContent Content, JsonElement Node);
 
 /// <summary>The library's filters (Content's <c>GET /contents</c>).</summary>
-public sealed record LibraryFilter(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20);
+public sealed record LibraryFilter(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20,
+    Guid? UnitId = null);
+
+/// <summary>A Content category with its names (Content's <c>GET /categories</c>).</summary>
+public sealed record CategoryName(string Id, string NameEn, string NameAr);
 
 /// <summary>Content's API, through the gateway (with the caller's token and tenant).</summary>
 public interface IContentApi
@@ -85,6 +113,9 @@ public interface IContentApi
 
     /// <summary>The shared library: the contents the caller may see, newest change first (archived ones left out).</summary>
     Task<IReadOnlyList<LibraryContent>> ListContentsAsync(LibraryFilter filter, CancellationToken ct);
+
+    /// <summary>The categories of a press, with their names.</summary>
+    Task<IReadOnlyList<CategoryName>> ListCategoriesAsync(string? pressId, CancellationToken ct);
 
     /// <summary>One content with its values, or null when it does not exist (or the caller may not see it).</summary>
     Task<LibraryContentDetail?> GetContentAsync(string contentId, CancellationToken ct);
@@ -108,11 +139,17 @@ public sealed record ContentIssue(string Path, string Message);
 
 public sealed record JsonLdResult(string JsonLd, IReadOnlyList<ContentIssue> Skipped);
 
+/// <summary>A published root post field (DynamicFields' <c>GET /catalog/root-post-fields</c>): a post kind and its static URL prefix.</summary>
+public sealed record PostKindInfo(string Key, string Title, string? Description, string SchemaType, string? UrlPrefix, int Version);
+
 /// <summary>DynamicFields' API, through the gateway.</summary>
 public interface IFieldsApi
 {
     /// <summary>A published field version (immutable, so cached), or null.</summary>
     Task<FieldVersionInfo?> GetFieldVersionAsync(string key, int version, CancellationToken ct);
+
+    /// <summary>The post kinds: the published root post fields, with their URL prefixes.</summary>
+    Task<IReadOnlyList<PostKindInfo>> ListPostKindsAsync(CancellationToken ct);
 
     /// <summary>The issues of a content tree (<c>POST /content/validate</c>); empty when valid.</summary>
     Task<IReadOnlyList<ContentIssue>> ValidateAsync(JsonNode root, CancellationToken ct);
@@ -121,10 +158,51 @@ public interface IFieldsApi
     Task<JsonLdResult?> BuildJsonLdAsync(JsonNode root, string? url, string? language, IReadOnlyDictionary<string, RenderAsset>? assets, CancellationToken ct);
 }
 
+/// <summary>An Organization unit's names.</summary>
+public sealed record UnitName(Guid Id, string NameEn, string NameAr);
+
+/// <summary>A member of a unit: the token subject (Content's assignee ids) and the name to show.</summary>
+public sealed record UnitMemberName(string UserId, string DisplayName);
+
+/// <summary>
+/// Organization's local directory, through the gateway. Names only, and Organization is optional: both answer empty
+/// when it is not installed, cannot be reached or refuses the caller, and the studio then shows ids.
+/// </summary>
+public interface IOrganizationApi
+{
+    Task<IReadOnlyList<UnitName>> ListUnitsAsync(CancellationToken ct);
+
+    Task<IReadOnlyList<UnitMemberName>> MembersAsync(Guid unitId, CancellationToken ct);
+}
+
+/// <summary>One problem Content (DynamicFields) found: a JSON Pointer into what it checked, the message, and its node.</summary>
+public sealed record ContentValidationProblem(string Path, string Message, string? NodeId);
+
+/// <summary>
+/// DynamicFields' problems that made Content refuse a step (422), carried through this module as an Ardalis
+/// <c>Invalid</c> result whose error code is <see cref="Code"/> (or <c>Code:nodeId</c>), which the endpoints answer with
+/// 422 and a <c>problems</c> list, as Content does.
+/// </summary>
+public static class ProblemErrors
+{
+    public const string Code = "content.validation-failed";
+
+    public static ValidationError Error(ContentValidationProblem p) =>
+        new(p.Path, p.Message, p.NodeId is null ? Code : $"{Code}:{p.NodeId}", ValidationSeverity.Error);
+
+    /// <summary>The problems in a result's validation errors; empty for any other result.</summary>
+    public static IReadOnlyList<ContentValidationProblem> Of(IEnumerable<ValidationError> errors) =>
+        [.. errors.Where(e => e.ErrorCode == Code || (e.ErrorCode?.StartsWith(Code + ":", StringComparison.Ordinal) ?? false))
+            .Select(e => new ContentValidationProblem(e.Identifier ?? "", e.ErrorMessage, e.ErrorCode!.Length > Code.Length ? e.ErrorCode[(Code.Length + 1)..] : null))];
+}
+
 /// <summary>Another module's API answered with an error, or could not be reached (<see cref="Status"/> null).</summary>
-public sealed class ExternalApiException(string service, int? status, string message)
+public sealed class ExternalApiException(string service, int? status, string message, IReadOnlyList<ContentValidationProblem>? problems = null)
     : Exception($"{service}: {(status is { } s ? $"HTTP {s}" : "unreachable")}: {message}")
 {
+    /// <summary>The <c>problems</c> of a 422, when the answer listed them.</summary>
+    public IReadOnlyList<ContentValidationProblem> Problems { get; } = problems ?? [];
+
     public string Service { get; } = service;
     public int? Status { get; } = status;
     public string Detail { get; } = message;
@@ -135,6 +213,7 @@ public sealed class ExternalApiException(string service, int? status, string mes
         403 => Result<T>.Forbidden($"{Service} refused: {Detail}"),
         404 => Result<T>.NotFound($"{Service}: {Detail}"),
         409 => Result<T>.Conflict($"{Service}: {Detail}"),
+        422 when Problems.Count > 0 => Result<T>.Invalid([.. Problems.Select(ProblemErrors.Error)]),
         400 or 422 => Result<T>.Invalid(new ValidationError(Service, Detail)),
         _ => Result<T>.Unavailable($"{Service} is not available: {Detail}")
     };

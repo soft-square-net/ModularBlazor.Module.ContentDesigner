@@ -13,7 +13,8 @@ public sealed record LibraryItemDto(LibraryContent Content, RenderBlock Block);
 /// Content's shared library, for the studio's "add existing content" (through the gateway, with the caller's token, so
 /// Content decides what the caller may see). Archived contents are left out.
 /// </summary>
-public sealed record ListLibraryQuery(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20)
+public sealed record ListLibraryQuery(string? FieldKey = null, string? Stage = null, string? SectionId = null, int Skip = 0, int Take = 20,
+    Guid? UnitId = null)
     : IQuery<Result<LibraryPage>>;
 
 public sealed class ListLibraryHandler(IContentApi content) : IQueryHandler<ListLibraryQuery, Result<LibraryPage>>
@@ -27,7 +28,7 @@ public sealed class ListLibraryHandler(IContentApi content) : IQueryHandler<List
         return await DesignResults.Calling<LibraryPage>(async () =>
         {
             // One more than asked tells whether another page follows.
-            var items = await content.ListContentsAsync(new LibraryFilter(query.FieldKey, query.Stage, query.SectionId, query.Skip, query.Take + 1), ct);
+            var items = await content.ListContentsAsync(new LibraryFilter(query.FieldKey, query.Stage, query.SectionId, query.Skip, query.Take + 1, query.UnitId), ct);
             return new LibraryPage([.. items.Where(i => !i.Archived).Take(query.Take)], items.Count > query.Take);
         });
     }
@@ -67,7 +68,7 @@ public sealed class GetLibraryItemHandler(IContentApi content) : IQueryHandler<G
 public sealed record AttachContentCommand(int PostId, int PostVersion, string ContentId, int? Index = null, bool Required = false, string? Culture = null)
     : ICommand<Result<WorkspaceDto>>;
 
-public sealed class AttachContentHandler(IContentApi content, ISender sender) : ICommandHandler<AttachContentCommand, Result<WorkspaceDto>>
+public sealed class AttachContentHandler(IContentApi content, ISender sender, DesignRights rights) : ICommandHandler<AttachContentCommand, Result<WorkspaceDto>>
 {
     public async ValueTask<Result<WorkspaceDto>> Handle(AttachContentCommand c, CancellationToken ct)
     {
@@ -75,6 +76,8 @@ public sealed class AttachContentHandler(IContentApi content, ISender sender) : 
         if (c.Index is < 0) return Result<WorkspaceDto>.Invalid(new ValidationError(nameof(c.Index), "'index' is 0 or more."));
         return await DesignResults.Calling<WorkspaceDto>(async () =>
         {
+            var allowed = await rights.RequireAsync(ContentDesignerPermissions.Arrange, c.PostId, await content.GetPostAsync(c.PostId, ct), ct);
+            if (!allowed.IsSuccess) return allowed.As<WorkspaceDto>();
             await content.AttachContentAsync(c.PostId, c.PostVersion, c.ContentId, c.Index, c.Required, ct);
             return await sender.Send(new GetWorkspaceQuery(c.PostId, c.Culture), ct);
         });

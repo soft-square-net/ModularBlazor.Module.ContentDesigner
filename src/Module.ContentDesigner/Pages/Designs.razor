@@ -2,7 +2,8 @@
 @inherits ContentDesignerPageBase
 
 @*
-  The tenant's post designs a page at a time (GET /api/contentdesigner/designs), optionally of one kind, and the
+  The tenant's post designs a page at a time (GET /api/contentdesigner/designs), optionally of one kind (the picker
+  lists DynamicFields' root post fields with their URL prefixes, GET /api/contentdesigner/kinds), and the
   document templates (GET /api/contentdesigner/document-templates). A post opens in the studio
   (/contentdesigner/studio/{postId}): from its row, or by its id (a post that has no design yet gets one there).
 *@
@@ -22,7 +23,21 @@
       <div class="mud-input-control mn-inline">
         <label class="mud-input-label" for="mn-kind">Kind</label>
         <div class="mud-input-wrapper mud-input-wrapper--dense">
-          <input id="mn-kind" type="search" class="mud-input-slot" @bind="_kind" placeholder="post.news" />
+          @if (_kinds.Count > 0)
+          {
+            <select id="mn-kind" class="mud-input-slot" @bind="_kind">
+              <option value="">All kinds</option>
+              @foreach (var kind in _kinds)
+              {
+                <option value="@kind.Key">@KindLabel(kind)</option>
+              }
+            </select>
+          }
+          else
+          {
+            @* DynamicFields did not answer (no dynamicfields.read, or it is not installed): the key can be typed. *@
+            <input id="mn-kind" type="search" class="mud-input-slot" @bind="_kind" placeholder="post.news" />
+          }
         </div>
       </div>
       <button type="submit" class="mud-button-root mud-button-outlined mud-button-primary mud-button-medium" disabled="@Busy">Show</button>
@@ -86,6 +101,7 @@
   private int _page = 1;
   private int _total;
   private string _kind = "";
+  private IReadOnlyList<PostKindInfo> _kinds = [];
   private int? _postId;
 
   private int LastPage => Math.Max(1, (_total + PageSize - 1) / PageSize);
@@ -96,8 +112,15 @@
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (firstRender) await LoadAsync();
+    if (!firstRender) return;
+    // The picker is a convenience: without it the key is typed, so its failure shows no error.
+    try { _kinds = [.. await Api.ListPostKindsAsync()]; }
+    catch (Exception e) when (e is ContentDesignerApiException or HttpRequestException) { }
+    await LoadAsync();
   }
+
+  private static string KindLabel(PostKindInfo kind) =>
+    kind.UrlPrefix is { Length: > 0 } prefix ? $"{kind.Title} — {kind.Key} (/{prefix.Trim('/')})" : $"{kind.Title} — {kind.Key}";
 
   private async Task LoadAsync()
   {
