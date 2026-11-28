@@ -154,3 +154,4 @@ body.mud-canvas-dragging .cd-palette { cursor: grabbing; }
 .cd-library__preview { max-block-size: 200px; overflow: auto; padding: 6px; border: 1px solid var(--mud-palette-lines-default);
   border-radius: 4px; background: var(--mud-palette-background); }
 .cd-library__add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.cd-problems__only { display: inline-flex; align-items: center; gap: .25rem; }

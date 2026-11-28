@@ -265,6 +265,7 @@
     var session = _session = new StudioSession(postId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind),
       new BrowserDraftStore(JS), user);
     session.Changed += OnSessionChanged;
+    session.ProblemsWanted += OnProblemsWanted;
     StudioSessions.Add(session);
     PageContext.Set(StudioKeys.Post, postId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
@@ -342,6 +343,16 @@
   private void OnSessionChanged() => InvokeAsync(StateHasChanged);
 
   private void OnPanelsChanged() => InvokeAsync(MountDockAsync);
+
+  /// <summary>A part with problems was selected: the Problems panel comes forward (opened if it was closed).</summary>
+  private void OnProblemsWanted() => InvokeAsync(async () =>
+  {
+    // The studio's own Problems panel: its contribution id is "{module id}:problems".
+    var problems = Panels.For(StudioKeys.Studio, [StudioKeys.Post]).FirstOrDefault(p => p.Id.EndsWith(":problems", StringComparison.Ordinal));
+    if (_dock is null || problems is null) return;
+    try { await _dock.InvokeVoidAsync("show", problems.Id); }
+    catch (JSDisconnectedException) { }
+  });
 
   // ───────────── the dock ─────────────
 
@@ -430,6 +441,7 @@
     if (_session is not null)
     {
       _session.Changed -= OnSessionChanged;
+      _session.ProblemsWanted -= OnProblemsWanted;
       StudioSessions.Remove(_session);
       _session = null;
     }

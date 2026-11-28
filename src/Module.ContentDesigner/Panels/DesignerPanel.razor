@@ -15,6 +15,11 @@
 *@
 
 <div class="cd-designer">
+  @* The parts with problems in this view, outlined in the error or warning color (the last check's findings). *@
+  @if (_marks.Length > 0)
+  {
+    <style>@_marks</style>
+  }
   @if (Session is null || Session.Document is null || Session.Views is null)
   {
     <p class="cd-empty" role="status">@(Session?.Error ?? "Opening the post…")</p>
@@ -58,12 +63,20 @@
     _settings = RenderMapping.Settings(HttpClients.CreateClient(HttpClientNames.WebApi).BaseAddress);
   }
 
+  private string _marks = "";
+
   protected override void OnSessionAttached() => Build();
 
   protected override void OnSessionChanged() => Build();
 
+  private void Mark() =>
+    _marks = Session is { Views: not null } session
+      ? ProblemTargets.Css(ProblemTargets.Marks(session.Problems, session.View, session.Views, session.Document))
+      : "";
+
   private void Build()
   {
+    Mark();
     if (Session?.Document is not { } document || Session.Views is not { } views) { _page = null; return; }
     var web = Views.IsWeb(Session.View);
     if (ReferenceEquals(_built.Views, views) && ReferenceEquals(_built.Document, document) && _built.Web == web

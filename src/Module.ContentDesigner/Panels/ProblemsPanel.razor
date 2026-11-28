@@ -3,7 +3,8 @@
   The checks of the views as edited (POST .../design/check with the unsaved views): the design rules, DynamicFields'
   validation, the JSON-LD essentials and the AMP page (each AMP issue a block causes names that block). Errors block
   publishing; warnings do not. What Content refused a step with (its validation: the feed, live, and 422 answers) shows
-  here too, joined with the check's finding of the same node. A problem that names a placement or a region selects it, in its view. Filter by view;
+  here too, joined with the check's finding of the same node. A problem that names a placement or a region selects it, in its view.
+  Selecting a part with problems elsewhere (the canvas, Structure) keeps the list to that part's problems until "Show all". Filter by view;
   the AMP page's CSS shows against AMP's limit. An edit (or a culture change) after a Check marks the report out of date.
 *@
 
@@ -26,6 +27,13 @@
       {
         <span class="cd-muted">(of the unsaved views)</span>
       }
+    }
+    @if (SelectedFilter is { } only)
+    {
+      <span class="cd-tag cd-problems__only" role="status">
+        Only @(SelectedLabel(only))
+        <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="ShowAll">Show all</button>
+      </span>
     }
     <span class="cd-studio__spacer"></span>
     <span class="cd-filter" role="radiogroup" aria-label="Show the problems of">
@@ -99,14 +107,47 @@
 
   private IReadOnlyList<StudioProblem> _problems = [];
 
-  protected override void OnSessionAttached() => _problems = Session?.Problems ?? [];
+  // The part the list keeps to (a selection id), and the one this panel selected itself (a click on a problem
+  // selects its part, and must not narrow the list it was clicked in).
+  private string? _only;
+  private string? _selectedHere;
+  private string? _seen;
 
-  protected override void OnSessionChanged() => _problems = Session?.Problems ?? [];
+  protected override void OnSessionAttached()
+  {
+    _problems = Session?.Problems ?? [];
+    _only = _seen = _selectedHere = null;
+  }
 
-  /// <summary>A problem of the whole design (no view) shows under every view.</summary>
-  private bool Shows(StudioProblem problem) => _filter.Length == 0 || problem.View is null || problem.View == _filter;
+  protected override void OnSessionChanged()
+  {
+    _problems = Session?.Problems ?? [];
+    var selected = Session?.Selected;
+    if (selected == _seen) return;
+    _seen = selected;
+    _only = selected is not null && selected != _selectedHere && Session!.ProblemsOf(selected).Count > 0 ? selected : null;
+    _selectedHere = null;
+  }
 
-  private int Count(string filter) => _problems.Count(p => filter.Length == 0 || p.View is null || p.View == filter);
+  /// <summary>The part the list keeps to now: only while it is still selected and still has problems.</summary>
+  private string? SelectedFilter =>
+    _only is { } only && Session?.Selected == only && _problems.Any(p => About(p, only)) ? only : null;
+
+  private bool About(StudioProblem problem, string id) => ProblemTargets.IsAbout(problem, id, Session?.Views, Session?.Document);
+
+  private void ShowAll() => _only = null;
+
+  private string SelectedLabel(string id) =>
+    id.StartsWith("content:", StringComparison.Ordinal) && StudioText.Content(Session!, id["content:".Length..]) is { Length: > 0 } content
+      ? content
+      : DesignEditor.IsRegion(id) ? "region " + DesignEditor.RegionId(id) : id;
+
+  /// <summary>A problem of the whole design (no view) shows under every view; with a part selected, only that part's.</summary>
+  private bool Shows(StudioProblem problem) =>
+    (_filter.Length == 0 || problem.View is null || problem.View == _filter) && (SelectedFilter is not { } only || About(problem, only));
+
+  private int Count(string filter) =>
+    _problems.Count(p => (filter.Length == 0 || p.View is null || p.View == filter) && (SelectedFilter is not { } only || About(p, only)));
 
   /// <summary>The post's content a node belongs to, when it is one of the post's own.</summary>
   private WorkspaceContent? ContentOf(string? nodeId) =>
@@ -117,29 +158,12 @@
 
   private Task CheckAsync() => Session?.CheckAsync() ?? Task.CompletedTask;
 
-  /// <summary>
-  /// Selects what a problem is about: the content whose node it is in, else what its path names
-  /// (/{view}/placements/{n} or /{view}/regions/{n}).
-  /// </summary>
+  /// <summary>Selects what a problem is about, in its view: the content whose node it is in, else what its path names.</summary>
   private void Go(StudioProblem problem)
   {
-    if (Session?.Views is not { } views) return;
-    if (ContentOf(problem.NodeId) is { } content)
-    {
-      if (problem.View is { } shownIn) Session.SelectView(shownIn);
-      Session.Select("content:" + content.ContentId);
-      return;
-    }
-    var segments = (problem.Path ?? "").Trim('/').Split('/');
-    var view = problem.View
-      ?? Views.All.FirstOrDefault(v => string.Equals(v, segments.ElementAtOrDefault(0), StringComparison.OrdinalIgnoreCase));
-    if (view is null) return;
-    Session.SelectView(view);
-    var design = DesignEditor.Resolve(views, view);
-    if (segments.Length >= 3 && int.TryParse(segments[2], out var index))
-    {
-      if (segments[1] == "placements" && index < design.AllPlacements.Count) Session.Select(design.AllPlacements[index].Part);
-      else if (segments[1] == "regions" && index < design.AllRegions.Count) Session.Select(DesignEditor.RegionPrefix + design.AllRegions[index].Id);
-    }
+    if (Session is null || ProblemTargets.Of(problem, Session.Views, Session.Document) is not { } target) return;
+    if (target.View is { } view) Session.SelectView(view);
+    _selectedHere = target.Id;
+    Session.Select(target.Id);
   }
 }
