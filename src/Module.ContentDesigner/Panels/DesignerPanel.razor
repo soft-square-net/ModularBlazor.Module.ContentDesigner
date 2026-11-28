@@ -45,17 +45,13 @@
 
 @code {
   private ElementReference _host;
-  private IJSObjectReference? _canvas;
+  private DesignCanvas? _canvas;
   private DotNetObjectReference<DesignerPanel>? _self;
-  private bool _creating;
   private PageModel? _page;
   private RenderSettings _settings = new();
 
   // What the page was built from, to build it again only when one of them changes.
   private (DViews? Views, RenderDocument? Document, bool Web, IReadOnlyDictionary<int, RenderBlockTemplate>? Templates) _built;
-  // What the canvas was last told.
-  private (string? View, bool ShowHidden, string? Direction, string? Culture, string? Selected) _told;
-
   protected override void OnInitialized()
   {
     base.OnInitialized();
@@ -78,33 +74,28 @@
 
   protected override async Task OnAfterRenderAsync(bool firstRender)
   {
-    if (Session?.Views is null) return;
-    if (_canvas is null)
-    {
-      if (_creating) return;
-      _creating = true;
-      _self ??= DotNetObjectReference.Create(this);
-      _canvas = await MudTail.CreateAsync("canvas", _host, new
-      {
-        adopt = true,
-        device = Views.Device(Session.View),
-        showHidden = Session.ShowHidden,
-        dir = Session.Direction,
-        lang = Session.Culture,
-        autoDraggable = true,
-      }, _self);
-      _creating = false;
-      _told = (Session.View, Session.ShowHidden, Session.Direction, Session.Culture, null);
-    }
-    if (_canvas is null) return;
+    _canvas ??= new DesignCanvas(CreateCanvasAsync, CanvasNow);
+    await _canvas.SyncAsync();
+  }
 
-    if (_told.View != Session.View) await _canvas.InvokeVoidAsync("setDevice", Views.Device(Session.View));
-    if (_told.ShowHidden != Session.ShowHidden) await _canvas.InvokeVoidAsync("setShowHidden", Session.ShowHidden);
-    if (_told.Direction != Session.Direction || _told.Culture != Session.Culture)
-      await _canvas.InvokeVoidAsync("setDirection", Session.Direction, Session.Culture);
-    if (_told.Selected != Session.Selected) await _canvas.InvokeVoidAsync("select", Session.Selected);
-    await _canvas.InvokeVoidAsync("refresh"); // the blocks may have moved: the selection box follows
-    _told = (Session.View, Session.ShowHidden, Session.Direction, Session.Culture, Session.Selected);
+  /// <summary>What the canvas should show; null while the panel has no open design. Read anew after every await.</summary>
+  private CanvasState? CanvasNow() =>
+    Session is { Views: not null } session
+      ? new CanvasState(session.View, session.ShowHidden, session.Direction, session.Culture, session.Selected)
+      : null;
+
+  private ValueTask<IJSObjectReference?> CreateCanvasAsync(CanvasState state)
+  {
+    _self ??= DotNetObjectReference.Create(this);
+    return MudTail.CreateAsync("canvas", _host, new
+    {
+      adopt = true,
+      device = Views.Device(state.View),
+      showHidden = state.ShowHidden,
+      dir = state.Direction,
+      lang = state.Culture,
+      autoDraggable = true,
+    }, _self);
   }
 
   /// <summary>MudCanvas's gestures, one call per finished gesture.</summary>
@@ -118,7 +109,7 @@
     {
       case "select":
         if (id == DropPlanner.Page) id = null; // the page is the canvas's root, not something to edit
-        _told = _told with { Selected = id };
+        _canvas?.Selected(id);
         Session.Select(id);
         break;
       case "drop":
@@ -150,8 +141,7 @@
   public async ValueTask DisposeAsync()
   {
     Dispose();
-    await MudTailInterop.DisposeHandleAsync(_canvas);
-    _canvas = null;
+    if (_canvas is not null) await _canvas.DisposeAsync();
     _self?.Dispose();
   }
 }

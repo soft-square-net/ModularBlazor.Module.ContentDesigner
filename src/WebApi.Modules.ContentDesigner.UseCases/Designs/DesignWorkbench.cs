@@ -86,8 +86,13 @@ public sealed class DesignWorkbench(
             PostDocuments.Contents(post),
             styles,
             templates.ToDictionary(t => t.Id, t => new BlockTemplateRef(t.FieldKey, t.View)),
-            key => Registry.Support(key) is var (has, amp) ? new RendererSupport(has, amp) : new RendererSupport(false, true));
+            key => Registry.Support(key) is var (has, amp) ? new RendererSupport(has, amp) : new RendererSupport(false, true),
+            post.HasLegacyRoot);
     }
+
+    /// <summary>The one problem of a post made from a title and a body only: it blocks publishing, and says what to do.</summary>
+    public static DesignProblem LegacyRootProblem(string kind) => new(null, ProblemSeverity.Error, Codes.Content, "/field",
+        $"This post has no '{kind}' values: it was made from a title and a body only. Open it in Contents Management and fill in the values of its kind.");
 
     /// <summary>
     /// Every check of the plan (section 4) for the views asked (all by default): the design rules, then DynamicFields'
@@ -109,7 +114,14 @@ public sealed class DesignWorkbench(
         var problems = DesignRules.Check(views, designKindVersion, context, only).ToList();
 
         var tree = PostDocuments.ToFieldsTree(post.Document);
-        foreach (var issue in await fields.ValidateAsync(tree, ct))
+        var issues = await fields.ValidateAsync(tree, ct);
+        if (post.HasLegacyRoot)
+        {
+            // DynamicFields only says the old root "is not published" (and checks nothing below it): say what to do instead.
+            problems.Add(LegacyRootProblem(post.Kind));
+            issues = [.. issues.Where(i => i.Path != "/field")];
+        }
+        foreach (var issue in issues)
             problems.Add(new(null, ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message, PostDocuments.NodeAt(post.Document, issue.Path)));
 
         var jsonLd = await fields.BuildJsonLdAsync(tree, JsonLdUrl(post.Permalink), culture, Assets(post.Document, postFields), ct);

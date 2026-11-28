@@ -35,7 +35,9 @@ public class HotReloadTests
             return new Leave(this);
         }
 
-        public Task SendAsync() => Handler!(new LiveMessage(Topic!, "post.changed", null, null, DateTimeOffset.UtcNow));
+        public Task SendAsync(long? eventId = null) => Handler!(new LiveMessage(Topic!, "post.changed",
+            eventId is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(new { eventId, type = "post.changed" }),
+            null, DateTimeOffset.UtcNow));
 
         public async Task SetStateAsync(LiveState state, bool rejoin = true)
         {
@@ -76,7 +78,8 @@ public class HotReloadTests
     {
         var feed = new Feed();
         var clock = new Clock();
-        var reload = new StudioHotReload(42, feed.CatchUpAsync, () => 17, live, () => Task.FromResult(hidden), clock);
+        var reload = new StudioHotReload(42, feed.CatchUpAsync, () => 17, live, () => Task.FromResult(hidden), clock,
+            (_, _) => Task.CompletedTask); // the waits between reads pass at once
         return (reload, feed, clock);
     }
 
@@ -205,6 +208,141 @@ public class HotReloadTests
         await Task.WhenAll(first, second, third);
         feed.Reads.ShouldBe(2); // the two asked meanwhile: one more read
     }
+
+    /// <summary>
+    /// Content's feed as the studio meets it: a row shows only once it is older than the event delay. Time passes only
+    /// when the hot reload waits.
+    /// </summary>
+    private sealed class HeldBackFeed
+    {
+        private static readonly TimeSpan EventDelay = TimeSpan.FromSeconds(2);
+        private readonly List<(long Id, TimeSpan At)> _rows = [];
+        private TimeSpan _now;
+
+        public long LastEvent { get; private set; } = 17;
+        public List<TimeSpan> ReadAt { get; } = [];
+        public List<TimeSpan> Waits { get; } = [];
+        public Dictionary<long, TimeSpan> Shown { get; } = [];
+
+        public void Commit(long id) => _rows.Add((id, _now));
+
+        public Task<bool> CatchUpAsync(CancellationToken ct)
+        {
+            ReadAt.Add(_now);
+            var rows = _rows.Where(r => r.Id > LastEvent && r.At <= _now - EventDelay).OrderBy(r => r.Id).ToList();
+            foreach (var row in rows) Shown[row.Id] = _now - row.At;
+            if (rows.Count > 0) LastEvent = rows[^1].Id;
+            return Task.FromResult(rows.Count > 0);
+        }
+
+        public Task WaitAsync(TimeSpan wait, CancellationToken ct)
+        {
+            Waits.Add(wait);
+            _now += wait;
+            return Task.CompletedTask;
+        }
+    }
+
+    private static async Task<(StudioHotReload Reload, HeldBackFeed Feed, FakeLive Live)> JoinedHeldBack()
+    {
+        var live = new FakeLive();
+        var feed = new HeldBackFeed();
+        var reload = new StudioHotReload(42, feed.CatchUpAsync, () => feed.LastEvent, live, () => Task.FromResult(false), new Clock(), feed.WaitAsync);
+        await reload.StartAsync(TestContext.Current.CancellationToken);
+        await Idle(reload);
+        feed.ReadAt.Clear();
+        feed.Waits.Clear();
+        return (reload, feed, live);
+    }
+
+    /// <summary>Waits until no read runs (asking for one while a read runs returns that run).</summary>
+    private static async Task Idle(StudioHotReload reload)
+    {
+        for (var i = 0; i < 5; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        await reload.CatchUpAsync(TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task A_nudge_ahead_of_the_feed_is_read_again_until_the_row_it_names_shows()
+    {
+        var (_, feed, live) = await JoinedHeldBack();
+
+        feed.Commit(18);
+        await live.SendAsync(18); // at once, as Content sends it: the feed still holds the row back
+        for (var i = 0; i < 100 && feed.LastEvent < 18; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+
+        feed.LastEvent.ShouldBe(18);
+        feed.ReadAt.Count.ShouldBe(3); // at once, 1.2 s and 2.2 s later
+        feed.Shown[18].ShouldBeLessThan(TimeSpan.FromSeconds(2.5)); // not at the next change, or after 60 s
+    }
+
+    [Fact]
+    public async Task A_row_the_feed_never_shows_is_given_up_after_the_last_retry()
+    {
+        var (reload, feed, live) = await JoinedHeldBack();
+
+        await live.SendAsync(99);
+        for (var i = 0; i < 100 && feed.Waits.Count < StudioHotReload.Retries.Count; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
+
+        feed.Waits.ShouldBe(StudioHotReload.Retries);
+        feed.ReadAt.Count.ShouldBe(StudioHotReload.Retries.Count + 1);
+
+        await reload.CatchUpAsync(TestContext.Current.CancellationToken); // a later tick reads once
+        feed.ReadAt.Count.ShouldBe(StudioHotReload.Retries.Count + 2);
+    }
+
+    [Fact]
+    public async Task A_newer_message_does_not_wait_out_an_older_rows_retry()
+    {
+        var live = new FakeLive();
+        var feed = new HeldBackFeed();
+        var stuck = false; // from here on a wait ends only when it is cancelled
+        var waits = 0;
+        var reload = new StudioHotReload(42, feed.CatchUpAsync, () => feed.LastEvent, live, () => Task.FromResult(false), new Clock(),
+            (wait, ct) =>
+            {
+                if (!stuck) return feed.WaitAsync(wait, ct);
+                Interlocked.Increment(ref waits);
+                return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            });
+        await reload.StartAsync(TestContext.Current.CancellationToken);
+        await Idle(reload);
+        feed.ReadAt.Clear();
+        stuck = true;
+
+        await live.SendAsync(98); // a row the feed does not show yet: the studio waits
+        for (var i = 0; i < 100 && Volatile.Read(ref waits) < 1; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        feed.ReadAt.Count.ShouldBe(1);
+
+        await live.SendAsync(99);
+        for (var i = 0; i < 100 && Volatile.Read(ref waits) < 2; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+
+        feed.ReadAt.Count.ShouldBe(2); // read at once, then waiting again
+        waits.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_resync_reads_once_more_for_a_row_still_held_back()
+    {
+        var (_, feed, live) = await JoinedHeldBack();
+
+        feed.Commit(18);
+        await live.SetStateAsync(LiveState.Reconnecting);
+        await live.SetStateAsync(LiveState.Connected); // no message will name row 18
+        for (var i = 0; i < 100 && feed.LastEvent < 18; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+
+        feed.LastEvent.ShouldBe(18);
+        feed.Waits.ShouldBe([StudioHotReload.SettleDelay]);
+    }
+
+    [Theory]
+    [InlineData("""{ "eventId": 21, "type": "content.changed" }""", 21L)]
+    [InlineData("""{ "type": "content.changed" }""", null)]
+    [InlineData("""[ 1 ]""", null)]
+    public void The_row_a_message_names_is_its_event_id(string payload, long? expected) =>
+        StudioHotReload.EventOf(new LiveMessage("content:post:42", "post.changed",
+            System.Text.Json.JsonDocument.Parse(payload).RootElement.Clone(), null, DateTimeOffset.UtcNow)).ShouldBe(expected);
 
     [Fact]
     public async Task Closing_leaves_the_topic()

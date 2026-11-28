@@ -35,6 +35,15 @@ public static class StudioSessions
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Whether a studio page that is closing may clear the page context's open post (<paramref name="contextPost"/>): not
+    /// while a session is open for that post. Blazor sets a new page up before it disposes the one it replaces, so the old
+    /// page must not take away what the new one has just set (its panels would say "No post is open" from then on).
+    /// </summary>
+    public static bool MayClearContext(string? contextPost) =>
+        !int.TryParse(contextPost, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id)
+        || Find(id) is null;
+
     public static void Remove(StudioSession session)
     {
         lock (Open)

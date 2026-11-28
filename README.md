@@ -63,6 +63,12 @@ DynamicFields validates the post and builds its JSON-LD, which must have headlin
 and the AMP page passes the AMP rules. Errors block publishing; warnings do not. Publishing pins the content revisions
 it was checked against.
 
+**Posts without their kind's root.** Posts that Contents Management made before it gave new posts a root of their kind
+have a `legacy.basic` root: a title and a body, and none of the kind's values. The check reports this as one error that
+says what to do (open the post in Contents Management and fill in the values of its kind), in place of DynamicFields'
+"not published" and an "unknown part" for each value the design places. Publishing stays blocked until the values are
+filled in.
+
 ## API
 
 Under `/api/contentdesigner`. Every call except the render routes needs a signed-in caller in a tenant (`X-Tenant`
@@ -196,6 +202,13 @@ sets the page context `content.post` to the post id; every pane finds the open s
 | JSON-LD | right | The post's JSON-LD, from the last check |
 | Problems | bottom | The checks of the unsaved views, filtered by view, with the AMP CSS budget, joined with what Content refused; a problem selects what it names |
 | Activity | bottom | The post's change feed; the studio reads it on each live message for the post (`content:post:{id}`), or every 4 seconds while visible when live updates are not available, and reloads what the sections change |
+
+**A live message can be ahead of the feed.** Content sends it as soon as a change is committed, but its feed holds rows
+back until they are older than `Content:EventDelay` (2 s by default), so that a client that reads after the last id it
+saw never skips a row committed late. So the studio reads at once and, until it has the row the message names
+(`eventId`), again after 1.2, 1, 1, 2, 4 and 8 seconds, then leaves it to the next tick. After joining or rejoining the
+topic, where no message names a row, it reads once more 3 seconds later. It needs neither the server's delay nor its
+clock, and the feed and its order are untouched.
 
 Under the toolbar, the studio shows the post's **unit and categories**, read only: the newsroom workflow sets them.
 

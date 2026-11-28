@@ -21,17 +21,38 @@ public enum StudioSync
 /// revoked the topic (for example while Content does not offer it). While live, a slow safety read
 /// (<see cref="LiveSafetyEvery"/>) covers a message lost on the way (messages are best effort).
 /// Catch-ups never overlap: one asked for while another runs is done once more right after it.
+/// <para>A nudge is ahead of the feed: Content sends it as the change commits, but its feed holds back the newest rows
+/// (<c>Content:EventDelay</c>, 2 s by default) so that a slower save cannot land behind an id a reader already passed. The
+/// message names the row (<c>eventId</c>), so while the studio has not read that far it reads again, after
+/// <see cref="Retries"/>. The feed and its ordering stay as they are, and the studio needs to know neither the delay nor
+/// the server's clock. A join or a resync names no row; one more read follows it after <see cref="SettleDelay"/>.</para>
 /// </summary>
 public sealed class StudioHotReload : IAsyncDisposable
 {
     public static readonly TimeSpan PollEvery = TimeSpan.FromSeconds(4);
     public static readonly TimeSpan LiveSafetyEvery = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// The waits before each further read while the row a message named is not in the feed yet: soon enough for the default
+    /// delay (the second read is 2.2 s after the nudge), and long enough in all (about 17 s) for a longer one. After the
+    /// last, the next message, tick or safety read takes over (the row may be one the feed no longer shows for this post).
+    /// </summary>
+    public static IReadOnlyList<TimeSpan> Retries { get; } =
+        [.. new[] { 1.2, 1, 1, 2, 4, 8 }.Select(seconds => TimeSpan.FromSeconds(seconds))];
+
+    /// <summary>The wait before the one further read after a join or a resync.</summary>
+    public static readonly TimeSpan SettleDelay = TimeSpan.FromSeconds(3);
+
     private readonly Func<CancellationToken, Task<bool>> _catchUp;
     private readonly Func<long> _lastEvent;
     private readonly ILiveChannel? _live;
     private readonly Func<Task<bool>> _hidden;
     private readonly TimeProvider _time;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private long _awaited; // the newest feed row a message named and the studio has not read
+    private int _attempt;
+    private bool _settle;
+    private CancellationTokenSource? _waiting; // the wait between two reads, which a newer message ends
     private readonly object _gate = new();
     private IAsyncDisposable? _subscription;
     private bool _joined;
@@ -46,7 +67,7 @@ public sealed class StudioHotReload : IAsyncDisposable
     /// <param name="live">The app's live channel, or null when the host has none.</param>
     /// <param name="hidden">Whether the page is hidden (no polling then; live messages are still followed).</param>
     public StudioHotReload(int postId, Func<CancellationToken, Task<bool>> catchUp, Func<long> lastEvent, ILiveChannel? live,
-        Func<Task<bool>> hidden, TimeProvider? time = null)
+        Func<Task<bool>> hidden, TimeProvider? time = null, Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         PostId = postId;
         _catchUp = catchUp;
@@ -54,6 +75,7 @@ public sealed class StudioHotReload : IAsyncDisposable
         _live = live;
         _hidden = hidden;
         _time = time ?? TimeProvider.System;
+        _delay = delay ?? ((wait, ct) => Task.Delay(wait, _time, ct));
         _lastCatchUp = _time.GetUtcNow();
     }
 
@@ -163,21 +185,74 @@ public sealed class StudioHotReload : IAsyncDisposable
             try { await _catchUp(ct); }
             catch (OperationCanceledException) { return; }
             catch (Exception) { /* the next nudge or tick tries again; the session shows its error */ }
+            TimeSpan wait;
+            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
             lock (_gate)
             {
-                if (!_again) return;
+                if (_again) continue;
+                if (_awaited > _lastEvent() && _attempt < Retries.Count) wait = Retries[_attempt++];
+                else if (_settle)
+                {
+                    _settle = false;
+                    _awaited = 0;
+                    wait = SettleDelay;
+                }
+                else
+                {
+                    _awaited = 0;
+                    return;
+                }
+                _waiting = waiting;
+            }
+            try { await _delay(wait, waiting.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { } // a newer message: read now
+            catch (OperationCanceledException) { return; }
+            finally
+            {
+                lock (_gate) _waiting = null;
             }
         }
     }
 
-    private Task OnMessageAsync(LiveMessage message) => CatchUpAsync(_ct);
+    /// <summary>The feed row a message of the post topic names (<c>{ eventId, type, contentId? }</c>), or null.</summary>
+    public static long? EventOf(LiveMessage message) =>
+        message.Payload is { ValueKind: System.Text.Json.JsonValueKind.Object } payload && payload.TryGetProperty("eventId", out var id)
+            && id.ValueKind == System.Text.Json.JsonValueKind.Number && id.TryGetInt64(out var value)
+            ? value
+            : null;
+
+    // The channel waits for its handlers, so the reads (and the waits between them) run on their own.
+    private Task OnMessageAsync(LiveMessage message)
+    {
+        var newer = false;
+        if (EventOf(message) is { } id)
+        {
+            lock (_gate)
+            {
+                if (id > _awaited)
+                {
+                    _awaited = id;
+                    _attempt = 0;
+                    newer = true;
+                }
+            }
+        }
+        _ = CatchUpAsync(_ct);
+        if (newer)
+        {
+            lock (_gate) _waiting?.Cancel(); // it must not wait out an older row's long retry
+        }
+        return Task.CompletedTask;
+    }
 
     private Task OnResyncAsync(LiveResync resync)
     {
         // Joined (first time or after a reconnect) or a gap: read whatever came since the last event read.
         _joined = true;
         Changed?.Invoke();
-        return CatchUpAsync(_ct);
+        lock (_gate) _settle = true; // a row committed just now is still held back, and no message will name it
+        _ = CatchUpAsync(_ct);
+        return Task.CompletedTask;
     }
 
     private Task OnRevokedAsync(string reason)

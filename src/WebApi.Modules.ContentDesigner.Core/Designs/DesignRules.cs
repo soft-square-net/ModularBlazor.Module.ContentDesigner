@@ -41,7 +41,8 @@ public sealed record DesignContext(
     IReadOnlyList<DesignContent> Contents,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> FieldStyles,
     IReadOnlyDictionary<int, BlockTemplateRef> BlockTemplates,
-    Func<string, RendererSupport> Renderers);
+    Func<string, RendererSupport> Renderers,
+    bool RootMissing = false);
 
 /// <summary>
 /// The design checks (plan section 4.2 to 4.4), pure: placed parts exist; required values and contents are visible in
@@ -106,7 +107,8 @@ public static class DesignRules
             var part = PartRef.Parse(placement.Part);
             switch (part.Kind)
             {
-                case PartKind.Prop when !values.ContainsKey(part.Key):
+                // A post without its kind's root has none of the kind's values: the caller reports that once.
+                case PartKind.Prop when !context.RootMissing && !values.ContainsKey(part.Key):
                     problems.Add(new(view, ProblemSeverity.Error, Codes.UnknownPart, at, $"'{context.Kind}' has no value '{part.Key}'."));
                     break;
                 case PartKind.Content when !contents.TryGetValue(part.Key, out _):

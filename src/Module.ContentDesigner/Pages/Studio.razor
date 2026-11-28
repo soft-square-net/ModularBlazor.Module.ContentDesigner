@@ -214,6 +214,7 @@
   private CancellationTokenSource? _poll;
   private StudioHotReload? _reload;
   private int _openedFor;
+  private bool _disposed;
 
   private bool _focus;
 
@@ -255,21 +256,25 @@
   protected override async Task OnParametersSetAsync()
   {
     if (_openedFor == PostId) return;
-    _openedFor = PostId;
+    var postId = _openedFor = PostId;
     await CloseAsync();
+    var user = await SignedInUserAsync();
+    // The page may have been left, or have moved to another post, while it waited: then it opens nothing here.
+    if (_disposed || _openedFor != postId || _session is not null) return;
 
-    _session = new StudioSession(PostId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind),
-      new BrowserDraftStore(JS), await SignedInUserAsync());
-    _session.Changed += OnSessionChanged;
-    StudioSessions.Add(_session);
-    PageContext.Set(StudioKeys.Post, PostId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+    var session = _session = new StudioSession(postId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind),
+      new BrowserDraftStore(JS), user);
+    session.Changed += OnSessionChanged;
+    StudioSessions.Add(session);
+    PageContext.Set(StudioKeys.Post, postId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-    if (await _session.OpenAsync())
+    var opened = await session.OpenAsync();
+    if (_disposed || !ReferenceEquals(_session, session)) return; // nothing to watch for a page that is gone
+    if (opened)
     {
-      var session = _session;
       _poll = new CancellationTokenSource();
       // Optional: a host without the live hub has no channel, and the studio polls.
-      _reload = new StudioHotReload(PostId, session.CatchUpAsync, () => session.LastEvent,
+      _reload = new StudioHotReload(postId, session.CatchUpAsync, () => session.LastEvent,
         Services.GetService(typeof(ILiveChannel)) as ILiveChannel, HiddenAsync);
       _reload.Changed += OnSessionChanged;
       var reload = _reload;
@@ -415,26 +420,29 @@
 
   private async Task CloseAsync()
   {
+    // Everything others can see goes at once, before any await: the next page must not meet a half-closed one.
     _poll?.Cancel();
     _poll?.Dispose();
     _poll = null;
-    if (_reload is not null)
+    var reload = _reload;
+    _reload = null;
+    if (reload is not null) reload.Changed -= OnSessionChanged;
+    if (_session is not null)
     {
-      _reload.Changed -= OnSessionChanged;
-      await _reload.DisposeAsync();
-      _reload = null;
+      _session.Changed -= OnSessionChanged;
+      StudioSessions.Remove(_session);
+      _session = null;
     }
-    if (_session is null) return;
-    _session.Changed -= OnSessionChanged;
-    StudioSessions.Remove(_session);
-    _session = null;
+    if (reload is not null) await reload.DisposeAsync();
   }
 
   public async ValueTask DisposeAsync()
   {
+    _disposed = true;
     Panels.Changed -= OnPanelsChanged;
-    await CloseAsync();
-    PageContext.Clear(StudioKeys.Post);
+    var closed = CloseAsync(); // its session is gone before it returns
+    if (StudioSessions.MayClearContext(PageContext.Get(StudioKeys.Post))) PageContext.Clear(StudioKeys.Post);
+    await closed;
     await MudTailInterop.DisposeHandleAsync(_dock);
     _dock = null;
   }
