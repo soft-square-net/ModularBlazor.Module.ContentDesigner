@@ -52,6 +52,7 @@ public sealed class StudioHotReload : IAsyncDisposable
     private long _awaited; // the newest feed row a message named and the studio has not read
     private int _attempt;
     private bool _settle;
+    private CancellationTokenSource? _waiting; // the wait between two reads, which a newer message ends
     private readonly object _gate = new();
     private IAsyncDisposable? _subscription;
     private bool _joined;
@@ -185,6 +186,7 @@ public sealed class StudioHotReload : IAsyncDisposable
             catch (OperationCanceledException) { return; }
             catch (Exception) { /* the next nudge or tick tries again; the session shows its error */ }
             TimeSpan wait;
+            using var waiting = CancellationTokenSource.CreateLinkedTokenSource(ct);
             lock (_gate)
             {
                 if (_again) continue;
@@ -200,9 +202,15 @@ public sealed class StudioHotReload : IAsyncDisposable
                     _awaited = 0;
                     return;
                 }
+                _waiting = waiting;
             }
-            try { await _delay(wait, ct); }
+            try { await _delay(wait, waiting.Token); }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { } // a newer message: read now
             catch (OperationCanceledException) { return; }
+            finally
+            {
+                lock (_gate) _waiting = null;
+            }
         }
     }
 
@@ -216,6 +224,7 @@ public sealed class StudioHotReload : IAsyncDisposable
     // The channel waits for its handlers, so the reads (and the waits between them) run on their own.
     private Task OnMessageAsync(LiveMessage message)
     {
+        var newer = false;
         if (EventOf(message) is { } id)
         {
             lock (_gate)
@@ -224,10 +233,15 @@ public sealed class StudioHotReload : IAsyncDisposable
                 {
                     _awaited = id;
                     _attempt = 0;
+                    newer = true;
                 }
             }
         }
         _ = CatchUpAsync(_ct);
+        if (newer)
+        {
+            lock (_gate) _waiting?.Cancel(); // it must not wait out an older row's long retry
+        }
         return Task.CompletedTask;
     }
 

@@ -293,6 +293,36 @@ public class HotReloadTests
     }
 
     [Fact]
+    public async Task A_newer_message_does_not_wait_out_an_older_rows_retry()
+    {
+        var live = new FakeLive();
+        var feed = new HeldBackFeed();
+        var stuck = false; // from here on a wait ends only when it is cancelled
+        var waits = 0;
+        var reload = new StudioHotReload(42, feed.CatchUpAsync, () => feed.LastEvent, live, () => Task.FromResult(false), new Clock(),
+            (wait, ct) =>
+            {
+                if (!stuck) return feed.WaitAsync(wait, ct);
+                Interlocked.Increment(ref waits);
+                return Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            });
+        await reload.StartAsync(TestContext.Current.CancellationToken);
+        await Idle(reload);
+        feed.ReadAt.Clear();
+        stuck = true;
+
+        await live.SendAsync(98); // a row the feed does not show yet: the studio waits
+        for (var i = 0; i < 100 && Volatile.Read(ref waits) < 1; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+        feed.ReadAt.Count.ShouldBe(1);
+
+        await live.SendAsync(99);
+        for (var i = 0; i < 100 && Volatile.Read(ref waits) < 2; i++) await Task.Delay(10, TestContext.Current.CancellationToken);
+
+        feed.ReadAt.Count.ShouldBe(2); // read at once, then waiting again
+        waits.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task A_resync_reads_once_more_for_a_row_still_held_back()
     {
         var (_, feed, live) = await JoinedHeldBack();
