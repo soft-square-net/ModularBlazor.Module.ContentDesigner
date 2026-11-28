@@ -31,6 +31,25 @@ public static class PostDocuments
         return Node(document, true);
     }
 
+    /// <summary>
+    /// The node a problem's path is in (the deepest <c>/children/{i}</c> a JSON Pointer into the document walks to), as
+    /// Content names it; null for a problem of the post's own values.
+    /// </summary>
+    public static string? NodeAt(JsonElement document, string path)
+    {
+        var segments = (path ?? "").Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var node = document;
+        string? nodeId = null;
+        for (var i = 0; i + 1 < segments.Length && segments[i] == "children"; i += 2)
+        {
+            var children = Children(node).ToList();
+            if (!int.TryParse(segments[i + 1], out var index) || index < 0 || index >= children.Count) break;
+            node = children[index];
+            nodeId = Str(node, "nodeId") ?? nodeId;
+        }
+        return nodeId;
+    }
+
     /// <summary>The top-level nodes of the document, in reading order.</summary>
     public static IEnumerable<JsonElement> Children(JsonElement node) =>
         node.ValueKind == JsonValueKind.Object && node.TryGetProperty("children", out var children) && children.ValueKind == JsonValueKind.Array

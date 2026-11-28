@@ -20,7 +20,7 @@ public sealed class ListDocumentTemplatesHandler(IReadRepository<DocumentTemplat
     : IQueryHandler<ListDocumentTemplatesQuery, Result<IReadOnlyList<DocumentTemplateDto>>>
 {
     public async ValueTask<Result<IReadOnlyList<DocumentTemplateDto>>> Handle(ListDocumentTemplatesQuery query, CancellationToken ct) =>
-        Result<IReadOnlyList<DocumentTemplateDto>>.Success([.. (await templates.ListAsync(new DocumentTemplatesSpec(query.Kind), ct)).Select(DocumentTemplateDto.From)]);
+        Result<IReadOnlyList<DocumentTemplateDto>>.Success([.. (await templates.ListAsync(new DocumentTemplatesSpec(PostKindKeys.Normalize(query.Kind)), ct)).Select(DocumentTemplateDto.From)]);
 }
 
 public sealed record GetDocumentTemplateQuery(int Id) : IQuery<Result<DocumentTemplateDto>>;

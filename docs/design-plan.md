@@ -163,18 +163,20 @@ Done:
 - **6a. Live** (on Platform preview.7): hot reload on the platform's live channel, with polling as the fallback (section
   6). The studio's side is done; Content does not offer the post's topic yet, so the studio still polls (section 10).
 
+- **6b. Content model** (Content C1-C3, DynamicFields' URL prefixes, Organization's contracts): done.
+  - `Kind` is the root DynamicFields field key (data migration `PostKindsAsFieldKeys`); the kind picker lists the root
+    post fields with their URL prefixes.
+  - The tray shows each content's unit, work-item state and assignee, filtered by state and unit; the studio shows the
+    post's unit and categories read only.
+  - `contentdesigner.arrange` and `.publish` are checked on the post's unit and the units above it (press and category
+    scopes still count), with the "your shift ended" state, local keeping of unsaved work and the save retried. A post
+    in no unit is the moderator's (`newsroom.moderate`) and the Desk's (`content.accept` or `content.publish`).
+  - Problems also lists `content.validation-failed` (feed, live and 422 `problems`), joined per node.
+  - Not done: document templates scoped by category (optional).
+
 Next. These phases depend on the newsroom design and wait for the newsroom build's waves 4-6 ("P2".."P5" are that
 design's phases; wave 4 is Shifts v2 and Content's newsroom core, wave 5 NewsRoom and Elsa, wave 6 the client and going
 live). Wave 4 needs the Organization module released first, and each wave starts with its own plan for approval.
-- **6b. Content model** (waits for wave 4: Content P3, and DynamicFields' URL prefix on root fields):
-  - Post.Kind is the root DynamicFields field key; document and block templates and design rules keyed by the old
-    enum are re-keyed by a data migration. Each kind's static URL comes from that field.
-  - A content's `SectionId` becomes its `UnitId`; the tray shows the unit and the work-item states (Assigned →
-    InProgress → Submitted → InReview → Accepted | Returned) instead of the old stages.
-  - The post's unit and categories are shown read only: the workflow assigns them (section 9, the category rule).
-  - Unit-scoped permissions, with the "your shift ended" state and local keeping of unsaved work (section 9).
-  - Problems also lists Content's `validate-node` / `content.validation-failed` results, without reporting a rule twice.
-  - Optional: document templates scoped by category as well as by kind.
 - **6c. Newsroom panes** (waits for wave 5: NewsRoom P4 and Elsa P5): NewsRoom adds the Workflow status and Elsa Studio
   panes to the studio through the dock-panel contract; this module owns no Elsa logic. The studio's Publish follows the
   PostProject's state (section 9).
@@ -216,7 +218,7 @@ The newsroom design (Organization, Shifts v2, NewsRoom, Elsa, live sync; agreed 
   without the other causes NU1605 downgrade errors. This repo pins both to preview.7.
 - The playground does not run Elsa yet: it needs its own database, a service client secret and a workflow pool (needed
   before wave 5).
-- Content does not offer the live topic `content:post:{id}` yet, so the hub refuses it and the studio polls.
+- The live topic `content:post:{id}` is Content's; whoever its permissions leave out is polled instead.
 - The studio draws the icons of its own dock panels only (`StudioIcons`): a pane another module adds, such as NewsRoom's
   in phase 6c, shows no icon unless the studio carries the Lucide icon it names.
 - No layout fills the platform's `blank` role, so focus mode is a full-screen frame on the studio page.

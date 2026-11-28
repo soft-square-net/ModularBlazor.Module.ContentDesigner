@@ -21,6 +21,7 @@ public static class ServiceConfigs
         // Shared by the design use cases: the page renderer (HtmlRenderer over the Rendering components) and the workbench.
         services.AddScoped(sp => new PageRenderer(sp, sp.GetRequiredService<ILoggerFactory>()));
         services.AddScoped<DesignWorkbench>();
+        services.AddScoped<DesignRights>();
 
         services.AddMediatorSourceGen();
         return services;

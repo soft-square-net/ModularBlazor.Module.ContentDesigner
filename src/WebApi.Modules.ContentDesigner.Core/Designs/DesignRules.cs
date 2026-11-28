@@ -14,7 +14,7 @@ public enum ProblemSeverity
 /// <see cref="Path"/> is a JSON Pointer into the design (<c>/mobile/placements/3</c>) or the document.
 /// An error blocks publication; a warning does not.
 /// </summary>
-public sealed record DesignProblem(ViewKind? View, ProblemSeverity Severity, string Code, string Path, string Message);
+public sealed record DesignProblem(ViewKind? View, ProblemSeverity Severity, string Code, string Path, string Message, string? NodeId = null);
 
 /// <summary>A root value of the post's kind (a DynamicFields property of the root field version).</summary>
 public sealed record KindValue(string Key, bool Required, string? SchemaProperty = null);

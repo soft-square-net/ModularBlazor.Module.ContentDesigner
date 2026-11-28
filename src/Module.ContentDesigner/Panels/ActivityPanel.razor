@@ -21,6 +21,10 @@
         <li class="cd-list__item" @onclick="() => Open(e)">
           <span class="cd-muted cd-time">@StudioText.When(e.At)</span>
           <span class="cd-list__title">@StudioText.Event(Session, e)</span>
+          @if (e.Type == "content.validation-failed" && e.Detail is { Length: > 0 } detail)
+          {
+            <span class="cd-list__note">@detail</span>
+          }
         </li>
       }
     </ul>

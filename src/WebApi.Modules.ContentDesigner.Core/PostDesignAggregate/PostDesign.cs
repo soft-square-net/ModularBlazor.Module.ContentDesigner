@@ -61,7 +61,8 @@ public sealed class PostDesign : AggregateRoot<int>, ITenantOwned
         if (postId <= 0) throw new DomainException("A design is for a post (its id).");
         if (string.IsNullOrWhiteSpace(by)) throw new DomainException("A design needs its author.");
         if (string.IsNullOrWhiteSpace(publicId) || publicId.Length > PublicIdMaxLength) throw new DomainException("The post has no public id.");
-        if (string.IsNullOrWhiteSpace(kind) || kind.Length > KindMaxLength) throw new DomainException("The post has no kind.");
+        kind = PostKindKeys.Normalize(kind);
+        if (kind.Length == 0 || kind.Length > KindMaxLength) throw new DomainException("The post has no kind.");
         return new PostDesign
         {
             PostId = postId,
@@ -97,13 +98,23 @@ public sealed class PostDesign : AggregateRoot<int>, ITenantOwned
     /// </summary>
     public void ApplyTemplate(int templateId, string templateKind, DesignViews template, IReadOnlyCollection<ViewKind>? views, string by, DateTimeOffset now)
     {
-        if (templateKind != Kind) throw new DomainException($"The template is for '{templateKind}', the post is a '{Kind}'.");
+        if (PostKindKeys.Normalize(templateKind) != Kind) throw new DomainException($"The template is for '{templateKind}', the post is a '{Kind}'.");
         var draft = Draft;
         foreach (var view in views is { Count: > 0 } ? views : ViewKinds.All)
             draft = draft.With(view, template[view]);
         Draft = draft.Checked();
         BasedOnTemplateId = templateId;
         Touch(by, now);
+    }
+
+    /// <summary>
+    /// Takes the post's kind as Content gives it now. A design made before Content named the kind (<c>postKind</c>) may
+    /// hold its document's root field instead. Not a change of its own: call it with the change that saves the design.
+    /// </summary>
+    public void Follow(string postKind)
+    {
+        var kind = PostKindKeys.Normalize(postKind);
+        if (kind.Length is > 0 and <= KindMaxLength) Kind = kind;
     }
 
     /// <summary>The kind version moved on in Content (the post was saved against a newer version).</summary>

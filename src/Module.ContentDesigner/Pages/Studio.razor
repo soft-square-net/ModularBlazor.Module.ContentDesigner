@@ -8,12 +8,17 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @inject IServiceProvider Services
+@using Microsoft.AspNetCore.Components.Authorization
 @using soft.square.net.ModularBlazor.Abstractions.Live
 
 @*
   The designer studio of one post: a MudDock workspace whose panes are dock panels (the dock-panel contract), the
   studio's own and those other modules add for "contentdesigner". The page owns the session (the post, the views as
   edited, undo, the checks); every pane finds it by the post id the page puts in the page context ("content.post").
+  The post's unit and categories show under the toolbar, read only: the newsroom workflow sets them. The studio is read
+  only without the right to arrange the post. When that right goes while it is open (the live topic is revoked, or a 403
+  after it was allowed), a banner says the shift ended, unsaved work is kept in the browser's storage, and the studio asks
+  for the rights every few seconds; when they return it opens up again and does the save it owes.
   Hot reload (StudioHotReload): the page listens on Content's live topic for the post (content:post:{id}) and, on each
   message, reads the post's change feed and reloads what the sections changed; the feed also catches up after a reconnect
   or a gap. Without a live channel, while it is not connected, or when the topic is refused, it polls the feed every 4 s
@@ -34,7 +39,7 @@
     <strong class="cd-studio__title" title="@_session?.Workspace?.Post.PublicId">@Title</strong>
     @if (_session?.Workspace is { } workspace)
     {
-      <span class="cd-tag">@workspace.Post.Kind</span>
+      <span class="cd-tag" title="@(workspace.Post.UrlPrefix is { Length: > 0 } prefix ? $"Kind (addresses under {prefix})" : "Kind")">@workspace.Post.Kind</span>
       @if (_session.Design?.Published is not null)
       {
         <span class="cd-tag cd-tag--ok">published</span>
@@ -80,11 +85,11 @@
     <span class="cd-studio__spacer"></span>
 
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Undo (Ctrl+Z)"
-            disabled="@(_session?.CanUndo != true)" @onclick="() => _session!.Undo()">Undo</button>
+            disabled="@(_session?.CanUndo != true || _session.Locked)" @onclick="() => _session!.Undo()">Undo</button>
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Redo (Ctrl+Y)"
-            disabled="@(_session?.CanRedo != true)" @onclick="() => _session!.Redo()">Redo</button>
+            disabled="@(_session?.CanRedo != true || _session.Locked)" @onclick="() => _session!.Redo()">Redo</button>
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="Back to the saved design"
-            disabled="@(_session?.Dirty != true)" @onclick="() => _session!.Revert()">Revert</button>
+            disabled="@(_session?.Dirty != true || _session.Locked)" @onclick="() => _session!.Revert()">Revert</button>
     <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
             disabled="@(_session?.Views is null || _session.Checking)" @onclick="() => _session!.CheckAsync()">Check</button>
     <button type="button" class="mud-button-root mud-button-filled mud-button-primary mud-button-small"
@@ -98,14 +103,15 @@
     @if (_session?.Design?.Published is null)
     {
       <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
-              disabled="@(_session?.Design is null || _session.Busy)" @onclick="() => _session!.PublishAsync()">Publish</button>
+              disabled="@(_session?.Design is null || _session.Busy || !_session.CanPublish)" title="@PublishHint"
+              @onclick="() => _session!.PublishAsync()">Publish</button>
     }
     else
     {
       <button type="button" class="mud-button-root mud-button-outlined mud-button-small"
-              disabled="@_session.Busy" @onclick="() => _session!.PublishAsync()">Publish again</button>
+              disabled="@(_session.Busy || !_session.CanPublish)" title="@PublishHint" @onclick="() => _session!.PublishAsync()">Publish again</button>
       <button type="button" class="mud-button-root mud-button-text mud-button-small"
-              disabled="@_session.Busy" @onclick="() => _session!.UnpublishAsync()">Unpublish</button>
+              disabled="@(_session.Busy || !_session.CanPublish)" title="@PublishHint" @onclick="() => _session!.UnpublishAsync()">Unpublish</button>
     }
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="The panes back where they started"
             disabled="@(_dock is null)" @onclick="ResetLayoutAsync">Reset layout</button>
@@ -114,6 +120,65 @@
       @(_focus ? "Exit focus" : "Focus")
     </button>
   </div>
+
+  @if (_session?.Workspace?.Post is { } post)
+  {
+    <div class="cd-studio__post" aria-label="The post's unit and categories">
+      <span><span class="cd-muted">Unit:</span>
+        @if (post.UnitId is { } unitId)
+        {
+          <strong>@StudioText.Unit(unitId, post.UnitNameEn, post.UnitNameAr)</strong>
+        }
+        else
+        {
+          <strong>none yet</strong>
+        }
+      </span>
+      <span><span class="cd-muted">Categories:</span>
+        @if (post.Categories is { Count: > 0 } categories)
+        {
+          @foreach (var category in categories)
+          {
+            <span class="cd-tag">@Category(category)</span>
+          }
+        }
+        else
+        {
+          <strong>none</strong>
+        }
+      </span>
+      <span class="cd-muted">Set by the newsroom workflow.</span>
+    </div>
+  }
+
+  @if (_session is { ShiftEnded: true })
+  {
+    <div class="cd-banner cd-banner--warn" role="alert">
+      <strong>Your shift ended</strong>
+      <span>You may not change this post's design now (your rights ended or changed).
+        @if (_session.Dirty)
+        {
+          <text>@(_session.DraftKept ? "Your unsaved work is kept in this browser" : "Your unsaved work is kept only while this page stays open: the browser's storage is not available")@(_session.SavePending ? ", and is saved when your rights return." : ".")</text>
+        }
+        The studio opens again by itself when your rights return.</span>
+    </div>
+  }
+  else if (_session is { Locked: true, Rights: { } rights })
+  {
+    <div class="cd-banner" role="status">
+      <strong>Read only</strong>
+      <span>@ReadOnlyReason(rights.Reason)</span>
+    </div>
+  }
+  @if (_session?.OfferedCopy is { } copy)
+  {
+    <div class="cd-banner" role="status">
+      <span>Unsaved work from @copy.At.ToLocalTime().ToString("g") is kept in this browser. The saved design changed since, so it was not applied.</span>
+      <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small" disabled="@_session.Locked"
+              title="Brings your copy back as unsaved changes: saving them replaces the saved design" @onclick="() => _session!.RestoreCopy()">Use my copy</button>
+      <button type="button" class="mud-button-root mud-button-text mud-button-small" @onclick="() => _session!.DiscardCopyAsync()">Discard my copy</button>
+    </div>
+  }
 
   @if (_session?.Error is { } error && _session.Views is null)
   {
@@ -133,7 +198,12 @@
 @code {
   private const string LayoutKey = "contentdesigner.studio.layout.v2"; // v2: Toolbox and Explorer, no Templates pane
 
+  /// <summary>How often the studio asks for the caller's rights: a shift's rights end and return without a reload.</summary>
+  private static readonly TimeSpan RightsEvery = TimeSpan.FromSeconds(15);
+
   [Parameter] public int PostId { get; set; }
+
+  [CascadingParameter] private Task<AuthenticationState>? Authentication { get; set; }
 
   private StudioSession? _session;
   private ElementReference _host;
@@ -149,13 +219,47 @@
 
   private string Title => _session?.Workspace?.Post.Title is { Length: > 0 } title ? title : $"Post {PostId}";
 
+  private string? PublishHint => _session is { CanPublish: false, Rights: not null } ? "You may not publish this post's design now" : null;
+
+  private static string Category(WorkspaceCategory category)
+  {
+    var arabic = System.Globalization.CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "ar";
+    return (arabic ? category.NameAr ?? category.NameEn : category.NameEn ?? category.NameAr) ?? category.Id;
+  }
+
+  private static string ReadOnlyReason(string? reason) => reason switch
+  {
+    "no-unit" => "This post is in no unit yet: until the workflow assigns one, only the moderator and the Desk may arrange it.",
+    "post-hidden" => "Content does not show you this post now.",
+    _ => "Your rights cover neither this post's unit nor its press or categories. If your shift has not started, check in."
+  };
+
+  private async Task<string?> SignedInUserAsync()
+  {
+    if (Authentication is null) return null;
+    var user = (await Authentication).User;
+    return user.FindFirst("sub")?.Value ?? user.Identity?.Name;
+  }
+
+  private async Task WatchRightsAsync(StudioSession session, CancellationToken ct)
+  {
+    using var timer = new PeriodicTimer(RightsEvery);
+    try
+    {
+      while (await timer.WaitForNextTickAsync(ct))
+        if (session.Rights is not null && !await HiddenAsync()) await session.VerifyRightsAsync(ct);
+    }
+    catch (OperationCanceledException) { }
+  }
+
   protected override async Task OnParametersSetAsync()
   {
     if (_openedFor == PostId) return;
     _openedFor = PostId;
     await CloseAsync();
 
-    _session = new StudioSession(PostId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind));
+    _session = new StudioSession(PostId, () => Api, Describe, (message, kind) => MudTail.ToastAsync(message, kind),
+      new BrowserDraftStore(JS), await SignedInUserAsync());
     _session.Changed += OnSessionChanged;
     StudioSessions.Add(_session);
     PageContext.Set(StudioKeys.Post, PostId.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -168,8 +272,13 @@
       _reload = new StudioHotReload(PostId, session.CatchUpAsync, () => session.LastEvent,
         Services.GetService(typeof(ILiveChannel)) as ILiveChannel, HiddenAsync);
       _reload.Changed += OnSessionChanged;
-      _ = _reload.RunAsync(_poll.Token);
-      await _reload.StartAsync(_poll.Token);
+      var reload = _reload;
+      var ct = _poll.Token;
+      reload.Revoked += _ => InvokeAsync(() => session.SuspendAsync(ct));
+      session.RightsReturned += () => _ = reload.RejoinAsync();
+      _ = _reload.RunAsync(ct);
+      _ = WatchRightsAsync(session, ct);
+      await _reload.StartAsync(ct);
     }
   }
 

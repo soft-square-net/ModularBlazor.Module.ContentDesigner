@@ -13,6 +13,10 @@ public class StudioHandlersTests
     private readonly IReadRepository<PostDesign> _designs = Substitute.For<IReadRepository<PostDesign>>();
     private readonly IContentApi _content = Substitute.For<IContentApi>();
 
+    private DesignRights Rights() => Bench.Rights(Bench.AllowEverything(Substitute.For<IAccessScopes>()), _content);
+
+    private GetWorkspaceHandler Workspaces() => new(_designs, _content, Bench.Workbench(), Bench.Organization(), Rights());
+
     public StudioHandlersTests() => _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns(Samples.Post());
 
     private PostDesign Existing()
@@ -26,11 +30,12 @@ public class StudioHandlersTests
     public async Task TheWorkspaceHasThePostItsContentsTheDocumentAndTheDesign()
     {
         Existing();
-        var result = await new GetWorkspaceHandler(_designs, _content, Bench.Workbench()).Handle(new GetWorkspaceQuery(7, "ar"), Ct);
+        var result = await Workspaces().Handle(new GetWorkspaceQuery(7, "ar"), Ct);
 
         result.IsSuccess.ShouldBeTrue();
         var workspace = result.Value;
-        workspace.Post.ShouldBe(new WorkspacePost(7, "pub-7", "Final day at the venue", "post.news", 2, 3, "/news/final-day"));
+        workspace.Post.Categories.ShouldNotBeNull().ShouldBeEmpty();
+        (workspace.Post with { Categories = null }).ShouldBe(new WorkspacePost(7, "pub-7", "Final day at the venue", "post.news", 2, 3, "/news/final-day"));
         workspace.Contents.Select(c => c.ContentId).ShouldBe([Samples.Heading, Samples.Paragraph, Samples.Image, Samples.Gallery, Samples.Video]);
         workspace.Contents[4].FieldLabel.ShouldBe("Video clip"); // the field's title
         workspace.Contents[0].FieldLabel.ShouldBe("Heading"); // no title in the snapshot: a label made from the key
@@ -49,7 +54,7 @@ public class StudioHandlersTests
     [Fact]
     public async Task APostWithoutADesignOpensWithNone()
     {
-        var result = await new GetWorkspaceHandler(_designs, _content, Bench.Workbench()).Handle(new GetWorkspaceQuery(7), Ct);
+        var result = await Workspaces().Handle(new GetWorkspaceQuery(7), Ct);
         result.IsSuccess.ShouldBeTrue();
         result.Value.Design.ShouldBeNull();
     }
@@ -57,7 +62,7 @@ public class StudioHandlersTests
     [Fact]
     public async Task AWorkspaceOfAPostContentDoesNotShowIsNotFound()
     {
-        var result = await new GetWorkspaceHandler(_designs, _content, Bench.Workbench()).Handle(new GetWorkspaceQuery(8), Ct);
+        var result = await Workspaces().Handle(new GetWorkspaceQuery(8), Ct);
         result.Status.ShouldBe(ResultStatus.NotFound);
     }
 
@@ -65,7 +70,7 @@ public class StudioHandlersTests
     public async Task ContentBeingDownMakesTheWorkspaceUnavailable()
     {
         _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns<ContentPost?>(_ => throw new ExternalApiException("Content", null, "refused"));
-        var result = await new GetWorkspaceHandler(_designs, _content, Bench.Workbench()).Handle(new GetWorkspaceQuery(7), Ct);
+        var result = await Workspaces().Handle(new GetWorkspaceQuery(7), Ct);
         result.Status.ShouldBe(ResultStatus.Unavailable);
     }
 

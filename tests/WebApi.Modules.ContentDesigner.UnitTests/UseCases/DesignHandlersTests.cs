@@ -21,10 +21,12 @@ public class DesignHandlersTests
     private readonly IContentApi _content = Substitute.For<IContentApi>();
     private readonly IAccessScopes _access = Substitute.For<IAccessScopes>();
     private readonly TestClock _clock = new();
+    private DesignRights Rights => Bench.Rights(_access, _content);
 
     public DesignHandlersTests()
     {
         _access.UserId.Returns("editor-1");
+        Bench.AllowEverything(_access);
         _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns(Samples.Post());
         _designs.AddAsync(Arg.Any<PostDesign>(), Arg.Any<CancellationToken>()).Returns(call => call.Arg<PostDesign>());
         _templates.ListAsync(Arg.Any<ISpecification<DocumentTemplate>>(), Arg.Any<CancellationToken>()).Returns([]);
@@ -45,7 +47,7 @@ public class DesignHandlersTests
         var template = DocumentTemplate.Create("News", null, "post.news", 2, Samples.Design(), "desk", TestClock.Start);
         _templates.ListAsync(Arg.Any<ISpecification<DocumentTemplate>>(), Arg.Any<CancellationToken>()).Returns([template]);
 
-        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, _clock).Handle(new OpenDesignCommand(7), Ct);
+        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, Rights, _clock).Handle(new OpenDesignCommand(7), Ct);
 
         result.IsSuccess.ShouldBeTrue();
         result.Value.Draft.Desktop.ShouldMatch(Samples.Design().Desktop);
@@ -56,7 +58,7 @@ public class DesignHandlersTests
     [Fact]
     public async Task WithoutADefaultANewDesignIsTheStarter()
     {
-        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, _clock).Handle(new OpenDesignCommand(7), Ct);
+        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, Rights, _clock).Handle(new OpenDesignCommand(7), Ct);
         result.Value.Draft.Mobile.ShouldMatch(ViewDesign.Starter);
     }
 
@@ -64,7 +66,7 @@ public class DesignHandlersTests
     public async Task APostHasOneDesign()
     {
         _designs.AnyAsync(Arg.Any<ISpecification<PostDesign>>(), Arg.Any<CancellationToken>()).Returns(true);
-        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, _clock).Handle(new OpenDesignCommand(7), Ct);
+        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, Rights, _clock).Handle(new OpenDesignCommand(7), Ct);
         result.Status.ShouldBe(ResultStatus.Conflict);
     }
 
@@ -72,7 +74,7 @@ public class DesignHandlersTests
     public async Task ContentRefusingTheCallerIsForbidden()
     {
         _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns<ContentPost?>(_ => throw new ExternalApiException("Content", 403, "No."));
-        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, _clock).Handle(new OpenDesignCommand(7), Ct);
+        var result = await new OpenDesignHandler(_designs, _templates, _content, _access, Rights, _clock).Handle(new OpenDesignCommand(7), Ct);
         result.Status.ShouldBe(ResultStatus.Forbidden);
     }
 
@@ -80,7 +82,7 @@ public class DesignHandlersTests
     public async Task AStaleVersionIsAConflict()
     {
         Existing(Design());
-        var result = await new SaveDesignHandler(_designs, _access, _clock).Handle(new SaveDesignCommand(7, 5, Samples.Design()), Ct);
+        var result = await new SaveDesignHandler(_designs, _access, Rights, _clock).Handle(new SaveDesignCommand(7, 5, Samples.Design()), Ct);
         result.Status.ShouldBe(ResultStatus.Conflict);
         await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, Ct);
     }
@@ -89,7 +91,7 @@ public class DesignHandlersTests
     public async Task PublishingPinsTheContentsRevisions()
     {
         Existing(Design());
-        var result = await new PublishDesignHandler(_designs, _content, Bench.Workbench(), _access, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
+        var result = await new PublishDesignHandler(_designs, _content, Bench.Workbench(), _access, Rights, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
 
         result.IsSuccess.ShouldBeTrue(string.Join("; ", result.Errors));
         result.Value.Published.ShouldNotBeNull();
@@ -103,7 +105,7 @@ public class DesignHandlersTests
         // The starter design is fine, but DynamicFields finds the post's document invalid.
         Existing(Design(DesignViews.Starter));
         var workbench = Bench.Workbench(Bench.Fields(issues: [new("/content/headline", "The headline is required.")]));
-        var result = await new PublishDesignHandler(_designs, _content, workbench, _access, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
+        var result = await new PublishDesignHandler(_designs, _content, workbench, _access, Rights, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
 
         result.Status.ShouldBe(ResultStatus.Conflict);
         result.Errors.ShouldContain("The headline is required.");

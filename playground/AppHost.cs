@@ -70,7 +70,9 @@ var webApi = builder.AddProject<Projects.WebApi>("webapi", launchProfileName: nu
     .WithEnvironment("Auth__Audience", "modular-webapi")
     .WithEnvironment("Cors__AllowedOrigins__0", ClientOrigin)
     // Development only (Access:DevGrants): the module's permissions for the dev accounts of tenant acme, written as
-    // ordinary grants (source "dev") the first time each one calls the API there.
+    // ordinary grants (source "dev") the first time each one calls the API there. acme-admin holds them on the whole
+    // tenant. editor@ reads on the whole tenant, but arranges and publishes only in one unit (a unit:{id} scope, set
+    // below with Playground:EditorUnit), as a shift would grant.
     .WithEnvironment("Access__DevGrants__0__Tenant", "acme")
     .WithEnvironment("Access__DevGrants__0__Email", "acme-admin@modular.local")
     .WithEnvironment("Access__DevGrants__0__Permissions__0", "contentdesigner.*")
@@ -89,12 +91,33 @@ if (mode == "dev")
         .WithEnvironment(ClientLocal + "WebApi.Modules.ContentDesigner.Client", Metadata("ApiClientOutput"))
         .WithEnvironment(ClientLocal + "Module.ContentDesigner", Metadata("UiOutput"));
 
+    // editor@'s unit: -- --Playground:EditorUnit=<unit id> (or user secrets / appsettings). The grant covers the unit and
+    // the units below it, so posts filed there (or deeper) open for editing; every other post is read only for editor@.
+    // To see "your shift ended", revoke these two grants while the studio is open (or plan a shift in the Shifts module
+    // with a role that holds contentdesigner.arrange, and check out).
+    var editorUnit = builder.Configuration["Playground:EditorUnit"];
+    if (string.IsNullOrWhiteSpace(editorUnit))
+        Console.WriteLine("editor@modular.local: no Playground:EditorUnit, so no right to arrange or publish any post (the studio opens read only).");
+    else if (!Guid.TryParse(editorUnit, out var unit))
+        throw new InvalidOperationException($"Playground:EditorUnit '{editorUnit}' is not a unit id.");
+    else
+    {
+        string unitScope = "unit:" + unit.ToString("N"); // a unit's scope, as UnitScopes.Of writes it
+        webApi.WithEnvironment("Access__DevGrants__2__Tenant", "acme")
+            .WithEnvironment("Access__DevGrants__2__Email", "editor@modular.local")
+            .WithEnvironment("Access__DevGrants__2__Scope", unitScope)
+            .WithEnvironment("Access__DevGrants__2__Permissions__0", "contentdesigner.arrange")
+            .WithEnvironment("Access__DevGrants__2__Permissions__1", "contentdesigner.publish");
+    }
+
     // The modules the designer works with, each loaded from a built checkout next to this repo (Debug build), or
     // from Playground:<Name>=<path>. A module that is not built is skipped with a note; the designer degrades without it.
     //   DynamicFields  the post kinds and block fields (required for designing)
     //   Content        posts (documents) and their contents
     //   Storage        assets (images, video) and the file picker; blobs on the local disk in playground/.data/blobs
-    //   Shifts         sections, including department sections (Multimedia, SEO)
+    //   Shifts         shifts, whose roles grant rights from check-in to check-out on a unit's scope
+    //   Organization   the units: their names in the studio, and where Content files posts and contents. One deployment
+    //                  runs it in Central mode with its own connector pointed at itself.
     // Elsa is not wired here yet: it needs its own database, a service client secret and a workflow pool.
     var siblings = new (string Name, string Id, string[] ClientParts, string AdminGrant, string? EditorGrant)[]
     {
@@ -102,6 +125,7 @@ if (mode == "dev")
         ("Content", "content", ["WebApi.Modules.Content.Client", "Module.Content"], "content.*", "content.author"),
         ("Storage", "storage", ["WebApi.Modules.Storage.Client", "Module.Storage", "Module.Storage.Shares"], "storage.*", "storage.access"),
         ("Shifts", "shifts", ["WebApi.Modules.Shifts.Client", "Module.Shifts"], "shifts.*", null),
+        ("Organization", "organization", ["WebApi.Modules.Organization.Client", "Module.Organization"], "org.*", "org.read"),
     };
     int adminPermission = 1, editorPermission = 1;
     foreach (var (name, id, clientParts, adminGrant, editorGrant) in siblings)
@@ -124,6 +148,28 @@ if (mode == "dev")
             webApi.WithEnvironment(ClientLocal + part, dll);
         if (id == "storage")
             webApi.WithEnvironment("Modules__Settings__storage__Storage__Local__Root", Path.Combine(data, "blobs"));
+        if (id == "organization")
+        {
+            // DEVELOPMENT ONLY: this secret is a playground value, never reuse it. The identity service's one configurable
+            // service client (Identity:ElsaClient; no Elsa runs here) is the connector's.
+            const string ConnectorClientId = "organization-connector";
+            const string ConnectorSecret = "dev-organization-connector-secret";
+            const string Org = "Modules__Settings__organization__Organization__";
+            identity.WithEnvironment("Identity__ElsaClient__ClientId", ConnectorClientId)
+                .WithEnvironment("Identity__ElsaClient__ClientSecret", ConnectorSecret);
+            string centralUrl = "http://localhost:" + WebApiPort + "/api/organization/";
+            webApi.WithEnvironment("Platform__DeploymentId", "playground")
+                .WithEnvironment("Tenancy__Seeds__Interval", "00:00:15")
+                .WithEnvironment(Org + "Mode", "Central")
+                .WithEnvironment(Org + "TrustedIssuers", Issuer)
+                .WithEnvironment(Org + "ServiceClients", ConnectorClientId)
+                .WithEnvironment(Org + "CentralUrl", centralUrl)
+                .WithEnvironment(Org + "TokenEndpoint", Issuer + "connect/token")
+                .WithEnvironment(Org + "ClientId", ConnectorClientId)
+                .WithEnvironment(Org + "ClientScope", "api")
+                .WithEnvironment(Org + "ClientSecret", ConnectorSecret)
+                .WithEnvironment(Org + "PollInterval", "00:00:05");
+        }
     }
 }
 

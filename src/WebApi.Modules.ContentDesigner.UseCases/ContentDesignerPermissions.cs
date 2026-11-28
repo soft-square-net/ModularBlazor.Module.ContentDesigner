@@ -14,8 +14,8 @@ public static class ContentDesignerPermissions
     public static IReadOnlyList<PermissionDefinition> All { get; } =
     [
         new(Read, "See post designs and templates, run the checks and preview the pages."),
-        new(Arrange, "Open a post in the designer, arrange its views and apply templates."),
+        new(Arrange, "Open a post in the designer, arrange its views and apply templates (on the post's unit, press or category)."),
         new(Templates, "Create, change and delete document and block templates, and choose the default per kind."),
-        new(Publish, "Publish and unpublish a post's design.")
+        new(Publish, "Publish and unpublish a post's design (on the post's unit, press or category).")
     ];
 }

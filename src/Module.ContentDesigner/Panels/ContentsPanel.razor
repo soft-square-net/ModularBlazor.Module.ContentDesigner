@@ -1,7 +1,7 @@
 @inherits StudioPanelBase
 @*
-  The contents tray: every content attached to the post (Content's shared library) with its stage, section and
-  assignee, and whether the current view places it by name, shows it through "items", or not at all; then the post's
+  The contents tray: every content attached to the post (Content's shared library) with its unit, stage and
+  assignee (names from Organization), filtered by stage and unit, and whether the current view places it by name, shows it through "items", or not at all; then the post's
   own values (the kind's root values). Click to select; drag one onto the canvas to place it there. Contents a section
   changed since the post was opened are marked. "Add existing content…" opens the library picker (Content's shared library).
 *@
@@ -17,11 +17,37 @@
     <section class="cd-section">
       <div class="cd-section__head">
         <h3 class="cd-section__title">Contents <span class="cd-muted">(@workspace.Contents.Count)</span></h3>
-        <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small" aria-pressed="@Session.LibraryOpen"
+        <button type="button" class="mud-button-root mud-button-text mud-button-primary mud-button-small" aria-pressed="@Session.LibraryOpen" disabled="@Session.Locked"
                 @onclick="() => Session.ShowLibrary(!Session.LibraryOpen)">Add existing content…</button>
       </div>
+      @if (workspace.Contents.Count > 0)
+      {
+        var units = workspace.Contents.Where(c => c.UnitId is not null).GroupBy(c => c.UnitId!.Value)
+          .Select(g => (Id: g.Key, Name: StudioText.Unit(g.Key, g.First().UnitNameEn, g.First().UnitNameAr), Count: g.Count()))
+          .OrderBy(u => u.Name, StringComparer.CurrentCulture).ToList();
+        <div class="cd-contents__filters" role="group" aria-label="Filter the contents">
+          <select class="cd-select" aria-label="Stage" @bind="_stage">
+            <option value="">Any stage</option>
+            @foreach (var stage in StudioText.Stages.Concat(workspace.Contents.Select(c => c.Stage)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+              <option value="@stage">@StudioText.Stage(stage) (@workspace.Contents.Count(c => SameStage(c, stage)))</option>
+            }
+          </select>
+          <select class="cd-select" aria-label="Unit" @bind="_unit">
+            <option value="">Any unit</option>
+            @foreach (var unit in units)
+            {
+              <option value="@unit.Id">@unit.Name (@unit.Count)</option>
+            }
+            @if (workspace.Contents.Any(c => c.UnitId is null))
+            {
+              <option value="@NoUnit">No unit (@workspace.Contents.Count(c => c.UnitId is null))</option>
+            }
+          </select>
+        </div>
+      }
       <ul class="cd-list" role="listbox" aria-label="Contents">
-        @foreach (var content in workspace.Contents.OrderBy(c => c.Order))
+        @foreach (var content in workspace.Contents.Where(Shows).OrderBy(c => c.Order))
         {
           var id = "content:" + content.ContentId;
           var placed = DesignEditor.FindPlacement(design, id);
@@ -32,11 +58,19 @@
             <span class="cd-list__main">
               <span class="cd-list__title">@StudioText.Content(Session, content.ContentId)</span>
               <span class="cd-list__meta">
-                <span class="@StudioText.StageClass(content.Stage)">@content.Stage</span>
+                <span class="@StudioText.StageClass(content.Stage)">@StudioText.Stage(content.Stage)</span>
+                @if (content.UnitId is { } unitId)
+                {
+                  <span class="cd-tag cd-tag--unit" title="Unit">@StudioText.Unit(unitId, content.UnitNameEn, content.UnitNameAr)</span>
+                }
+                else
+                {
+                  <span class="cd-muted">no unit</span>
+                }
                 @if (content.Required) { <span class="cd-tag">required</span> }
                 @if (content.Drift) { <span class="cd-tag cd-tag--warn" title="A newer accepted revision than the one pinned">drift</span> }
                 @if (content.SectionId is { } section) { <span class="cd-muted">§ @section</span> }
-                @if (content.AssigneeId is { } assignee) { <span class="cd-muted">→ @Short(assignee)</span> }
+                @if (content.AssigneeId is { } assignee) { <span class="cd-muted" title="Assignee">→ @(content.AssigneeName ?? Short(assignee))</span> }
               </span>
               @if (content.ReviewNote is { Length: > 0 } note) { <span class="cd-list__note">“@note”</span> }
             </span>
@@ -47,6 +81,10 @@
       @if (workspace.Contents.Count == 0)
       {
         <p class="cd-empty">The post has no contents yet. Sections add them in Content, or add one from the library.</p>
+      }
+      else if (!workspace.Contents.Any(Shows))
+      {
+        <p class="cd-empty">No content of the post matches the filters.</p>
       }
     </section>
 
@@ -76,6 +114,20 @@
 </div>
 
 @code {
+  private const string NoUnit = "none";
+
+  private string _stage = "";
+  private string _unit = "";
+
+  private static bool SameStage(WorkspaceContent content, string stage) => string.Equals(content.Stage, stage, StringComparison.OrdinalIgnoreCase);
+
+  private bool Shows(WorkspaceContent content) =>
+    (_stage.Length == 0 || SameStage(content, _stage))
+    && (_unit.Length == 0 || (_unit == NoUnit ? content.UnitId is null : content.UnitId?.ToString() == _unit));
+
+  /// <summary>Another post: its own filters.</summary>
+  protected override void OnSessionAttached() => (_stage, _unit) = ("", "");
+
   private static string Short(string id) => id.Length > 8 ? id[..8] : id;
 
   private void Key(KeyboardEventArgs e, string id)

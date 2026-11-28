@@ -95,6 +95,21 @@ public class DesignModelTests
     }
 
     [Fact]
+    public void ADesignFollowsItsPostsKind()
+    {
+        var design = PostDesign.Create(7, "pub-7", "post.news", 1, DesignViews.Starter, null, "u1", Now);
+        var version = design.Version;
+
+        design.Follow("Article"); // an old enum name is read as its key
+        design.Kind.ShouldBe("post.article");
+        design.Version.ShouldBe(version); // saved with the change that follows
+        design.ApplyTemplate(2, "post.article", Samples.Design(), null, "u1", Now);
+
+        design.Follow("");
+        design.Kind.ShouldBe("post.article");
+    }
+
+    [Fact]
     public void ApplyingSomeViewsKeepsTheOthers()
     {
         var design = PostDesign.Create(7, "pub-7", "post.news", 2, DesignViews.Starter, null, "u1", Now);

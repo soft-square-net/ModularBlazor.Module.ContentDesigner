@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The migration harness: applies every ContentDesigner migration, one set per engine, to a real PostgreSQL, SQL Server,
+    MySQL and Oracle database in Docker (Testcontainers), checks the data step both ways, and checks that each engine's
+    model snapshot matches the model (no pending model changes). Without Docker the database tests are skipped.
+  -->
+
+  <ItemGroup>
+    <!-- The host-shared data layer (EF Core and the four engines' providers), which the module compiles against only. -->
+    <PackageReference Include="soft.square.net.WebApi.Data" Version="$(ModularBlazorPlatformVersion)" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.17.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.17.0" />
+    <PackageReference Include="Testcontainers.MySql" Version="4.17.0" />
+    <PackageReference Include="Testcontainers.Oracle" Version="4.17.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.Infrastructure\WebApi.Modules.ContentDesigner.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\WebApi.Modules.ContentDesigner.UseCases\WebApi.Modules.ContentDesigner.UseCases.csproj" />
+  </ItemGroup>
+
+</Project>

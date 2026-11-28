@@ -71,15 +71,32 @@ public sealed class StudioHotReload : IAsyncDisposable
     /// <summary>Raised when <see cref="Mode"/> or <see cref="Refused"/> may have changed.</summary>
     public event Action? Changed;
 
+    /// <summary>Raised when the server revokes the topic: the caller's rights changed (a shift may have ended).</summary>
+    public event Func<string, Task>? Revoked;
+
     /// <summary>Joins the post's live topic, when the app has a live channel; polling covers the time until it is joined.</summary>
-    public async Task StartAsync(CancellationToken ct)
+    public Task StartAsync(CancellationToken ct)
     {
         _ct = ct;
-        if (_live is null) return;
+        if (_live is null) return Task.CompletedTask;
         _live.StateChanged += OnStateChanged;
+        return JoinAsync(ct);
+    }
+
+    /// <summary>Joins the topic again after the server refused or revoked it (the caller's rights returned).</summary>
+    public Task RejoinAsync()
+    {
+        if (_live is null || _disposed || Refused is null) return Task.CompletedTask;
+        Refused = null;
+        _joined = false;
+        return JoinAsync(_ct);
+    }
+
+    private async Task JoinAsync(CancellationToken ct)
+    {
         try
         {
-            var subscription = await _live.SubscribeAsync(Topic(PostId), OnMessageAsync, _lastEvent(),
+            var subscription = await _live!.SubscribeAsync(Topic(PostId), OnMessageAsync, _lastEvent(),
                 new LiveSubscribeOptions { OnResync = OnResyncAsync, OnRevoked = OnRevokedAsync }, ct);
             if (_disposed || Refused is not null)
             {
@@ -168,7 +185,7 @@ public sealed class StudioHotReload : IAsyncDisposable
         Refused = reason;
         _subscription = null; // the channel dropped it
         Changed?.Invoke();
-        return Task.CompletedTask;
+        return Revoked?.Invoke(reason) ?? Task.CompletedTask;
     }
 
     private void OnStateChanged(LiveState state)

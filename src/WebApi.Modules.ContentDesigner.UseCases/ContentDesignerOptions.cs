@@ -12,6 +12,12 @@ public sealed class ContentDesignerOptions
     /// </summary>
     public string ApiBaseUrl { get; set; } = "http://localhost:5080";
 
+    /// <summary>
+    /// A post that is in no unit yet may be arranged and published only by the moderator and the Desk: besides the
+    /// ContentDesigner permission, the caller needs one of these on the post's press or categories (comma separated).
+    /// </summary>
+    public string UnitlessEditorPermissions { get; set; } = "newsroom.moderate,content.accept,content.publish";
+
     /// <summary>The public site's address, prefixed to a post's permalink for the canonical link (empty: the permalink as is).</summary>
     public string SiteBaseUrl { get; set; } = "";
 

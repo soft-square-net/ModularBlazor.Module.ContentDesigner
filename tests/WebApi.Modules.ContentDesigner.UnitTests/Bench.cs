@@ -36,6 +36,35 @@ public static class Bench
         return fields;
     }
 
+    /// <summary>The rights over a caller, with the module's default settings.</summary>
+    public static DesignRights Rights(IAccessScopes access, IContentApi content) =>
+        new(access, content, Microsoft.Extensions.Options.Options.Create(Options));
+
+    /// <summary>A caller who holds every permission everywhere.</summary>
+    public static IAccessScopes AllowEverything(IAccessScopes access)
+    {
+        access.HasPermissionAsync(default!, default!, default).ReturnsForAnyArgs(Task.FromResult(true));
+        return access;
+    }
+
+    /// <summary>A caller with exactly these grants: a permission on a scope.</summary>
+    public static IAccessScopes Grants(params (string Permission, string Scope)[] grants)
+    {
+        var access = Substitute.For<IAccessScopes>();
+        access.UserId.Returns("editor-1");
+        access.HasPermissionAsync(default!, default!, default).ReturnsForAnyArgs(call => Task.FromResult(grants.Any(g =>
+            g.Permission == call.ArgAt<string>(0) && ((IEnumerable<string>)call.Args()[1]).Contains(g.Scope, StringComparer.OrdinalIgnoreCase))));
+        return access;
+    }
+
+    public static IOrganizationApi Organization(IReadOnlyList<UnitName>? units = null, IReadOnlyList<UnitMemberName>? members = null)
+    {
+        var organization = Substitute.For<IOrganizationApi>();
+        organization.ListUnitsAsync(Arg.Any<CancellationToken>()).Returns(Task.FromResult(units ?? []));
+        organization.MembersAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(members ?? []));
+        return organization;
+    }
+
     public static PageRenderer Renderer() => new(new ServiceCollection().BuildServiceProvider(), NullLoggerFactory.Instance);
 
     public static DesignWorkbench Workbench(IFieldsApi? fields = null, IReadRepository<BlockTemplate>? blockTemplates = null)
