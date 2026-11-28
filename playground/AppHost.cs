@@ -118,6 +118,7 @@ if (mode == "dev")
     //   Shifts         shifts, whose roles grant rights from check-in to check-out on a unit's scope
     //   Organization   the units: their names in the studio, and where Content files posts and contents. One deployment
     //                  runs it in Central mode with its own connector pointed at itself.
+    //   NewsRoom       post projects, whose state opens and closes Publish (needs DynamicFields, Content, Organization).
     // Elsa is not wired here yet: it needs its own database, a service client secret and a workflow pool.
     var siblings = new (string Name, string Id, string[] ClientParts, string AdminGrant, string? EditorGrant)[]
     {
@@ -126,6 +127,8 @@ if (mode == "dev")
         ("Storage", "storage", ["WebApi.Modules.Storage.Client", "Module.Storage", "Module.Storage.Shares"], "storage.*", "storage.access"),
         ("Shifts", "shifts", ["WebApi.Modules.Shifts.Client", "Module.Shifts"], "shifts.*", null),
         ("Organization", "organization", ["WebApi.Modules.Organization.Client", "Module.Organization"], "org.*", "org.read"),
+        // editor@ sees every project (read only), so the studio can tell a post with no project from one it may not see.
+        ("NewsRoom", "newsroom", ["WebApi.Modules.NewsRoom.Client", "Module.NewsRoom"], "newsroom.*", "newsroom.projects"),
     };
     int adminPermission = 1, editorPermission = 1;
     foreach (var (name, id, clientParts, adminGrant, editorGrant) in siblings)
@@ -146,6 +149,8 @@ if (mode == "dev")
             webApi.WithEnvironment($"Access__DevGrants__1__Permissions__{editorPermission++}", editorGrant);
         foreach (var (part, dll) in parts)
             webApi.WithEnvironment(ClientLocal + part, dll);
+        if (id == "newsroom")
+            webApi.WithEnvironment("Modules__Settings__newsroom__NewsRoom__ApiBaseUrl", "http://localhost:" + WebApiPort);
         if (id == "storage")
             webApi.WithEnvironment("Modules__Settings__storage__Storage__Local__Root", Path.Combine(data, "blobs"));
         if (id == "organization")

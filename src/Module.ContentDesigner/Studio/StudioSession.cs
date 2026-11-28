@@ -534,12 +534,15 @@ public sealed partial class StudioSession
 
     public async Task<bool> PublishAsync()
     {
-        if (!CanPublish || !await SavedFirstAsync()) return false;
-        return await RunAsync(async api =>
+        if (!CanPublishNow || !await SavedFirstAsync()) return false;
+        var published = await RunAsync(async api =>
         {
             Design = await api.PublishDesignAsync(PostId, new PublishRequest { Version = Design!.Version, Culture = Culture });
             await _toast("Design published.", "success");
         });
+        // The workflow may have moved since it was last asked: the button follows at once.
+        if (!published) await VerifyRightsAsync();
+        return published;
     }
 
     public async Task<bool> UnpublishAsync()

@@ -71,6 +71,10 @@ public static class StudioText
     /// <summary>"in-progress" → "in progress".</summary>
     public static string Stage(string stage) => stage.Replace('-', ' ').ToLowerInvariant();
 
+    /// <summary>"ReadyForDesk" → "Ready for desk": a NewsRoom project's state.</summary>
+    public static string ProjectState(string state) =>
+        string.Concat(state.Select((c, i) => i > 0 && char.IsUpper(c) ? " " + char.ToLowerInvariant(c) : c.ToString()));
+
     /// <summary>A unit's name in the UI's language; its id's start when Organization did not name it.</summary>
     public static string Unit(Guid unitId, string? nameEn, string? nameAr)
     {

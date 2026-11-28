@@ -40,6 +40,15 @@ public static class Bench
     public static DesignRights Rights(IAccessScopes access, IContentApi content) =>
         new(access, content, Microsoft.Extensions.Options.Options.Create(Options));
 
+    /// <summary>The publish gate over a NewsRoom that answers this (default: the deployment has none).</summary>
+    public static PublishGate Gate(PostProjects? answer = null)
+    {
+        var newsRoom = Substitute.For<INewsRoomApi>();
+        newsRoom.GetPostProjectsAsync(Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(answer ?? PostProjects.Of(NewsRoomAnswer.NotInstalled)));
+        return new PublishGate(newsRoom);
+    }
+
     /// <summary>A caller who holds every permission everywhere.</summary>
     public static IAccessScopes AllowEverything(IAccessScopes access)
     {

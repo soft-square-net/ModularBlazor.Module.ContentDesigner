@@ -25,7 +25,25 @@ public class ShiftRightsTests
 
         private object Design() => new { postId = 7, publicId = "pub-7", kind = "post.news", version = Version, draft = StudioJson.ToApi(Stored) };
 
-        private object Rights() => new { postId = 7, canArrange = CanArrange, canPublish = CanArrange, reason = CanArrange ? null : "no-right" };
+        /// <summary>The NewsRoom project's state; null: the post has none.</summary>
+        public string? ProjectState { get; set; }
+        public int PublishCalls { get; private set; }
+        public int Unpublishes { get; private set; }
+
+        private object? Publishing() => ProjectState is not { } state ? null : new
+        {
+            allows = state is "InProduction" or "ReadyForDesk",
+            status = state is "InProduction" or "ReadyForDesk" ? "open" : "closed",
+            projectId = "0190b5a1-0000-7000-8000-0000000000aa",
+            projectState = state,
+            message = state is "InProduction" or "ReadyForDesk" ? null : $"The post's NewsRoom project is {state}."
+        };
+
+        private object Rights() => new
+        {
+            postId = 7, canArrange = CanArrange, canPublish = CanArrange, reason = CanArrange ? null : "no-right",
+            publishing = CanArrange ? Publishing() : null
+        };
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
@@ -49,6 +67,18 @@ public class ShiftRightsTests
                 return Json(new { events, last = Feed.Count, more = false });
             }
             if (path.EndsWith("/check", StringComparison.Ordinal)) return Json(new { valid = true, errors = 0, warnings = 0, problems = Array.Empty<object>() });
+            if (path.EndsWith("/design/publish", StringComparison.Ordinal))
+            {
+                PublishCalls++;
+                return ProjectState is null or "InProduction" or "ReadyForDesk"
+                    ? Json(Design())
+                    : Problem(HttpStatusCode.Conflict, $"The post's NewsRoom project is {ProjectState}.");
+            }
+            if (path.EndsWith("/design/unpublish", StringComparison.Ordinal))
+            {
+                Unpublishes++;
+                return Json(Design());
+            }
             if (path.EndsWith("/design", StringComparison.Ordinal))
             {
                 if (request.Method == HttpMethod.Get) return Json(Design());
@@ -110,6 +140,57 @@ public class ShiftRightsTests
 
     private static void Hide(StudioSession session) =>
         session.Edit(v => DesignEditor.SetHidden(v, Views.Mobile, "content:a", true)).ShouldBeTrue();
+
+    [Theory]
+    [InlineData(null, true)]
+    [InlineData("InProduction", true)]
+    [InlineData("ReadyForDesk", true)]
+    [InlineData("NeedsModeration", false)]
+    public async Task Publish_follows_the_newsroom_project(string? state, bool open)
+    {
+        var api = new Api { ProjectState = state };
+        var session = await Opened(api, new Drafts());
+
+        session.CanPublishNow.ShouldBe(open);
+        session.CanPublish.ShouldBeTrue(); // the right itself stays: taking down needs no leave
+
+        (await session.PublishAsync()).ShouldBe(open);
+        api.PublishCalls.ShouldBe(open ? 1 : 0);
+        (await session.UnpublishAsync()).ShouldBeTrue(session.Error);
+        api.Unpublishes.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_refused_publish_asks_again_so_the_button_follows_the_workflow()
+    {
+        var api = new Api { ProjectState = "InProduction" };
+        var session = await Opened(api, new Drafts());
+
+        api.ProjectState = "Killed"; // the workflow moved since the studio last asked
+        (await session.PublishAsync()).ShouldBeFalse();
+
+        session.CanPublishNow.ShouldBeFalse();
+        session.Publishing.ShouldNotBeNull().ProjectState.ShouldBe("Killed");
+        session.Error.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public async Task The_next_rights_check_opens_publishing_again()
+    {
+        var api = new Api { ProjectState = "Approved" };
+        var session = await Opened(api, new Drafts());
+
+        api.ProjectState = "InProduction";
+        await session.VerifyRightsAsync(Ct);
+
+        session.CanPublishNow.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData("InProduction", "In production")]
+    [InlineData("ReadyForDesk", "Ready for desk")]
+    [InlineData("Killed", "Killed")]
+    public void A_project_state_reads_as_words(string state, string words) => StudioText.ProjectState(state).ShouldBe(words);
 
     [Fact]
     public async Task A_revoke_the_server_confirms_ends_the_shift_and_keeps_the_unsaved_work()

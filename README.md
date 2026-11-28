@@ -89,7 +89,7 @@ header or the token's tenant). Edits send the `version` they read and get 409 if
 | `GET /posts/{postId}/events?after=` | `read` | The post's change feed in Content, after an event id (the studio's hot reload) |
 | `POST /posts/{postId}/design/check` `{ views?, culture?, design? }` | `read` | The checks: errors and warnings, per view, the JSON-LD and the AMP CSS size; of the unsaved views when `design` is sent. An AMP issue a block causes names its placement |
 | `POST /posts/{postId}/design/preview` `{ amp, culture?, views? }` | `read` | The draft, or unsaved views, as the page or the AMP page (with its AMP issues) |
-| `POST /posts/{postId}/design/publish` `{ version, culture? }` | `publish` | Publish once the checks pass; 409 lists the errors |
+| `POST /posts/{postId}/design/publish` `{ version, culture? }` | `publish` | Publish once the checks pass; 409 lists the errors. Also 409 or 503 when the [newsroom workflow](#publishing-and-the-newsroom-workflow) does not let it |
 | `POST /posts/{postId}/design/unpublish` `{ version }` | `publish` | Take the published design down |
 | `DELETE /posts/{postId}/design?version=` | `arrange` | Delete the design |
 | `GET /document-templates?kind=`, `GET /document-templates/{id}` | `read` | Document templates |
@@ -124,6 +124,35 @@ So a shift's rights, which start at check-in and end at check-out, open and clos
 `ContentDesigner:UnitlessEditorPermissions` on the post's press or categories (or the tenant). This covers opening,
 saving, arranging, applying a template, adding a content, deleting, publishing and unpublishing. Templates are not tied
 to a post and are checked as before. A refusal is 403 with the reason.
+
+### Publishing and the newsroom workflow
+
+Where [NewsRoom](https://github.com/soft-square-net/ModularBlazor.Module.NewsRoom) runs, a post made from a proposal has a
+**post project**. Its design can be published (or published again) only while the project is **InProduction** or
+**ReadyForDesk**. NewsRoom is optional: a post without a project, and a deployment without NewsRoom, publish as before.
+Taking a design down is never gated, and nothing else (arranging, saving, checks) is either.
+
+| What NewsRoom says | Publish |
+| --- | --- |
+| Not installed (its routes answer 404), or the post has no project | as before |
+| The project is InProduction or ReadyForDesk | as before |
+| Any other state, Scheduled and Published included | 409 naming the state |
+| No answer: unreachable, an error, or slower than 5 s | 503, try again |
+| It cannot be told whether the post has a project (see below) | 503 saying what to set up |
+
+The last two refuse on purpose: letting a publish through would skip the workflow for the very posts it controls.
+
+NewsRoom lists only the projects the asker may see, so an empty list from someone who sees part of the newsroom proves
+nothing. The module asks as its **service client** (`ServiceAuthority`, `ServiceClientId`, `ServiceClientSecret`) when
+one is set, then as the caller, and believes "no project" only from someone who holds `newsroom.moderate`,
+`newsroom.projects` or `newsroom.workflow` on the whole tenant (`GET /api/newsroom/access/mine`). **With NewsRoom
+installed, set up the service client and grant it `newsroom.projects` tenant-wide** (read only) in each tenant; without
+it, only users with such a tenant-wide grant can publish posts that have no visible project.
+
+`GET /posts/{postId}/rights` and the workspace answer with `publishing` (`allows`, `status`: `no-newsroom`,
+`no-project`, `open`, `closed` or `unknown`, `projectId`, `projectState`, `message`) for a caller who may publish. The
+studio shows the project's state under the toolbar, with a link to its NewsRoom page, disables Publish while the
+workflow does not allow it and says why. It follows the workflow with its rights check (every 15 s).
 
 ### Content's refusals
 
@@ -170,14 +199,14 @@ Change them on the Host Modules page.
 | Setting (`ContentDesigner:`) | Default | What it is |
 | --- | --- | --- |
 | `MaxPageSize` | `100` | The largest page of designs |
-| `ApiBaseUrl` | `http://localhost:5080` | The gateway, for the calls to Content, DynamicFields and Organization |
+| `ApiBaseUrl` | `http://localhost:5080` | The gateway, for the calls to Content, DynamicFields, Organization and NewsRoom |
 | `SiteBaseUrl` | (empty) | The public site, prefixed to a post's permalink for the canonical link |
 | `AmpUrlTemplate` | `/api/contentdesigner/render/{publicId}/amp` | The AMP page's address, for `rel=amphtml` |
 | `AssetUrlTemplate` | `/api/storage/items/{id}/content` | An asset's address |
 | `Stylesheets` | MudTail's core and editorial CSS | The responsive page's stylesheets, comma separated |
 | `RenderCacheMinutes` | `10` | How long a public page stays cached (0: not cached) |
 | `UnitlessEditorPermissions` | `newsroom.moderate,content.accept,content.publish` | Who may arrange and publish a post in no unit yet (the moderator and the Desk): any one of these, besides the ContentDesigner permission |
-| `ServiceAuthority`, `ServiceClientId`, `ServiceClientSecret` | (empty) | An optional client-credentials client for anonymous renders; without it a public page renders without JSON-LD |
+| `ServiceAuthority`, `ServiceClientId`, `ServiceClientSecret` | (empty) | A client-credentials client for anonymous renders (without it a public page renders without JSON-LD) and, with NewsRoom, for reading post projects ([publishing](#publishing-and-the-newsroom-workflow): grant it `newsroom.projects` tenant-wide) |
 
 In the Blazor client, the **ContentDesigner** menu entry opens the Designs page (`/contentdesigner`): the designs a
 page at a time and the document templates, optionally of one kind (picked from DynamicFields' root post fields, with
@@ -330,6 +359,7 @@ checkout next to this repo, or at `--Playground:<Name>=<path>`, and grants the d
 | Storage | `../Module.Storage` | Assets and the file picker (blobs in `playground/.data/blobs`) |
 | Shifts | `../Module.Shifts` | Shifts, whose roles grant rights from check-in to check-out |
 | Organization | `../Module.Organization` | Units and members: names in the studio, and where Content files posts. Runs here in Central mode with its connector pointed at itself; creating the tree and seeding the tenant is as in that repo's README |
+| NewsRoom | `../Module.NewsRoom` | Post projects, whose state opens and closes Publish. It needs DynamicFields, Content and Organization. Both dev accounts get a tenant-wide NewsRoom read in `acme`, so no service client is needed here |
 
 A module without a build is skipped with a note at start. Elsa is not wired in yet.
 

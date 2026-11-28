@@ -91,7 +91,7 @@ public class DesignHandlersTests
     public async Task PublishingPinsTheContentsRevisions()
     {
         Existing(Design());
-        var result = await new PublishDesignHandler(_designs, _content, Bench.Workbench(), _access, Rights, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
+        var result = await new PublishDesignHandler(_designs, _content, Bench.Workbench(), _access, Rights, Bench.Gate(), _clock).Handle(new PublishDesignCommand(7, 0), Ct);
 
         result.IsSuccess.ShouldBeTrue(string.Join("; ", result.Errors));
         result.Value.Published.ShouldNotBeNull();
@@ -105,7 +105,7 @@ public class DesignHandlersTests
         // The starter design is fine, but DynamicFields finds the post's document invalid.
         Existing(Design(DesignViews.Starter));
         var workbench = Bench.Workbench(Bench.Fields(issues: [new("/content/headline", "The headline is required.")]));
-        var result = await new PublishDesignHandler(_designs, _content, workbench, _access, Rights, _clock).Handle(new PublishDesignCommand(7, 0), Ct);
+        var result = await new PublishDesignHandler(_designs, _content, workbench, _access, Rights, Bench.Gate(), _clock).Handle(new PublishDesignCommand(7, 0), Ct);
 
         result.Status.ShouldBe(ResultStatus.Conflict);
         result.Errors.ShouldContain("The headline is required.");
