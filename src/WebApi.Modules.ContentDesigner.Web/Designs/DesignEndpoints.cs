@@ -135,7 +135,7 @@ public sealed class Publish : IEndpoint
         app.MapPost("/posts/{postId:int}/design/publish", HandleAsync)
             .RequirePermission(ContentDesignerPermissions.Publish)
             .WithName("ContentDesigner_PublishDesign")
-            .WithSummary("Publish the draft once every check passes (409 lists the errors); pins the content revisions it was checked against.");
+            .WithSummary("Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.");
 
     private static async Task<Results<Ok<PostDesignDto>, ProblemHttpResult>> HandleAsync(int postId, PublishRequest request, ISender sender, CancellationToken ct) =>
         (await sender.Send(new PublishDesignCommand(postId, request.Version, request.Culture), ct)).ToOkResult();

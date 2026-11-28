@@ -26,7 +26,7 @@ public class StudioV2HandlersTests
 
     private DesignRights Rights() => Bench.Rights(Bench.AllowEverything(Substitute.For<IAccessScopes>()), _content);
 
-    private GetWorkspaceHandler Workspaces() => new(_designs, _content, Bench.Workbench(), Bench.Organization(), Rights());
+    private GetWorkspaceHandler Workspaces() => new(_designs, _content, Bench.Workbench(), Bench.Organization(), Rights(), Bench.Gate());
 
     public StudioV2HandlersTests() => _content.GetPostAsync(7, Arg.Any<CancellationToken>()).Returns(Samples.Post());
 

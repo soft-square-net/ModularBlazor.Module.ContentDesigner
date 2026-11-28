@@ -20,13 +20,17 @@ public sealed class Gateway(HttpClient http, IHttpContextAccessor accessor, ITen
 {
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public async Task<HttpResponseMessage> SendAsync(string service, HttpMethod method, string path, object? body, CancellationToken ct)
+    /// <summary><paramref name="bearer"/>, when given, is the token the call carries instead of the caller's.</summary>
+    public async Task<HttpResponseMessage> SendAsync(string service, HttpMethod method, string path, object? body, CancellationToken ct,
+        string? bearer = null)
     {
         using var request = new HttpRequestMessage(method, options.Value.ApiBaseUrl.TrimEnd('/') + path);
         if (body is not null) request.Content = JsonContent.Create(body, options: Json);
 
         var incoming = accessor.HttpContext?.Request;
-        if (incoming?.Headers.Authorization.ToString() is { Length: > 0 } authorization)
+        if (bearer is not null)
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+        else if (incoming?.Headers.Authorization.ToString() is { Length: > 0 } authorization)
             request.Headers.TryAddWithoutValidation("Authorization", authorization);
         else if (await ServiceTokenAsync(ct) is { } token)
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -41,7 +45,8 @@ public sealed class Gateway(HttpClient http, IHttpContextAccessor accessor, ITen
         }
     }
 
-    private async Task<string?> ServiceTokenAsync(CancellationToken ct)
+    /// <summary>The module's service token; null when no service client is configured or it cannot get one.</summary>
+    public async Task<string?> ServiceTokenAsync(CancellationToken ct)
     {
         try { return await service.GetAsync(ct); }
         catch (Exception e) when (e is HttpRequestException or InvalidOperationException or JsonException) { return null; }

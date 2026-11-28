@@ -71,7 +71,7 @@ public sealed record WorkspaceDto(
 public sealed record GetWorkspaceQuery(int PostId, string? Culture = null) : IQuery<Result<WorkspaceDto>>;
 
 public sealed class GetWorkspaceHandler(IReadRepository<PostDesign> designs, IContentApi content, DesignWorkbench workbench,
-    IOrganizationApi organization, DesignRights rights)
+    IOrganizationApi organization, DesignRights rights, PublishGate gate)
     : IQueryHandler<GetWorkspaceQuery, Result<WorkspaceDto>>
 {
     public async ValueTask<Result<WorkspaceDto>> Handle(GetWorkspaceQuery query, CancellationToken ct) =>
@@ -109,7 +109,7 @@ public sealed class GetWorkspaceHandler(IReadRepository<PostDesign> designs, ICo
                 styles,
                 design is null ? null : PostDesignDto.From(design),
                 blockFields,
-                await rights.EvaluateAsync(post.Id, post, ct));
+                await gate.AddToAsync(await rights.EvaluateAsync(post.Id, post, ct), ct));
         });
 
     /// <summary>The unit and member names the post and its contents need; whatever Organization does not give stays an id.</summary>

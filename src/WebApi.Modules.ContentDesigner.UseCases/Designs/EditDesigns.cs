@@ -80,13 +80,13 @@ public sealed class ApplyTemplateHandler(IRepository<PostDesign> designs, IReadR
 }
 
 /// <summary>
-/// Publish the draft: every check runs first against the post as it is now, and any error is a 409 that lists them.
+/// Publish the draft, while the newsroom workflow lets it (<see cref="PublishGate"/>): every check runs first against the post as it is now, and any error is a 409 that lists them.
 /// The design then pins the revision of each content the checks saw and moves to the post's kind version.
 /// </summary>
 public sealed record PublishDesignCommand(int PostId, int Version, string? Culture = null) : ICommand<Result<PostDesignDto>>;
 
 public sealed class PublishDesignHandler(IRepository<PostDesign> designs, IContentApi content, DesignWorkbench workbench, IAccessScopes access,
-    DesignRights rights, TimeProvider clock)
+    DesignRights rights, PublishGate gate, TimeProvider clock)
     : ICommandHandler<PublishDesignCommand, Result<PostDesignDto>>
 {
     public async ValueTask<Result<PostDesignDto>> Handle(PublishDesignCommand command, CancellationToken ct) =>
@@ -102,6 +102,11 @@ public sealed class PublishDesignHandler(IRepository<PostDesign> designs, IConte
                 return Result<PostDesignDto>.Conflict(DesignResults.Stale($"The design of post {command.PostId}", design.Version, command.Version));
             if (found is not { } post)
                 return Result<PostDesignDto>.NotFound(DesignResults.NoPost(command.PostId));
+            var workflow = await gate.EvaluateAsync(command.PostId, ct);
+            if (!workflow.Allows)
+                return workflow.Status == PublishGateStatuses.Unknown
+                    ? Result<PostDesignDto>.Unavailable(workflow.Message!)
+                    : Result<PostDesignDto>.Conflict(workflow.Message!);
 
             var problems = await workbench.CheckAsync(design.Draft, post.KindVersion, post, null, command.Culture, ct);
             if (problems.HasErrors())

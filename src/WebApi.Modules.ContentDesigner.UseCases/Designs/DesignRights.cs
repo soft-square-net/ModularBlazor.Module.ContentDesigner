@@ -17,8 +17,12 @@ public static class PostRightsReasons
     public const string PostHidden = "post-hidden";
 }
 
-/// <summary>What the caller may do with one post's design right now (grants count only while they run).</summary>
-public sealed record PostRightsDto(int PostId, bool CanArrange, bool CanPublish, string? Reason, Guid? UnitId);
+/// <summary>
+/// What the caller may do with one post's design right now (grants count only while they run). <see cref="Publishing"/>
+/// is the newsroom workflow's say on publishing, asked only for a caller who <see cref="CanPublish"/> (else null);
+/// publishing needs both.
+/// </summary>
+public sealed record PostRightsDto(int PostId, bool CanArrange, bool CanPublish, string? Reason, Guid? UnitId, PublishGateDto? Publishing = null);
 
 /// <summary>
 /// The fine-grained rights on one post's design. The endpoints check that the caller holds the permission somewhere; this
@@ -105,9 +109,10 @@ public sealed class DesignRights(IAccessScopes access, IContentApi content, IOpt
 /// <summary>The caller's rights on one post's design: the studio asks again after a refusal, until they come back.</summary>
 public sealed record GetPostRightsQuery(int PostId) : IQuery<Result<PostRightsDto>>;
 
-public sealed class GetPostRightsHandler(IContentApi content, DesignRights rights) : IQueryHandler<GetPostRightsQuery, Result<PostRightsDto>>
+public sealed class GetPostRightsHandler(IContentApi content, DesignRights rights, PublishGate gate)
+    : IQueryHandler<GetPostRightsQuery, Result<PostRightsDto>>
 {
     public async ValueTask<Result<PostRightsDto>> Handle(GetPostRightsQuery query, CancellationToken ct) =>
         await DesignResults.Calling<PostRightsDto>(async () =>
-            await rights.EvaluateAsync(query.PostId, await content.GetPostAsync(query.PostId, ct), ct));
+            await gate.AddToAsync(await rights.EvaluateAsync(query.PostId, await content.GetPostAsync(query.PostId, ct), ct), ct));
 }

@@ -23,7 +23,14 @@ public sealed partial class StudioSession
     /// <summary>The right went while the studio was open: "your shift ended".</summary>
     public bool ShiftEnded => Locked && (_suspended || _lost);
 
+    /// <summary>The caller's right to publish or take down the design now.</summary>
     public bool CanPublish => !Locked && Rights?.CanPublish != false;
+
+    /// <summary>The newsroom workflow's say on publishing; null when nobody was asked (or an older server).</summary>
+    public PublishGateDto? Publishing => Rights?.Publishing;
+
+    /// <summary>Publishing needs the right and the workflow's leave; taking a design down needs only the right.</summary>
+    public bool CanPublishNow => CanPublish && Publishing?.Allows != false;
 
     /// <summary>A save was asked for and refused: it is done when the right returns.</summary>
     public bool SavePending { get; private set; }

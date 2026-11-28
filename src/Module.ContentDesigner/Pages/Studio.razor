@@ -15,7 +15,9 @@
   The designer studio of one post: a MudDock workspace whose panes are dock panels (the dock-panel contract), the
   studio's own and those other modules add for "contentdesigner". The page owns the session (the post, the views as
   edited, undo, the checks); every pane finds it by the post id the page puts in the page context ("content.post").
-  The post's unit and categories show under the toolbar, read only: the newsroom workflow sets them. The studio is read
+  The post's unit and categories show under the toolbar, read only: the newsroom workflow sets them. Where NewsRoom has a
+  project for the post, its state shows there too, and Publish is open only while the workflow lets it (the rights say so,
+  so it follows with them); Unpublish is not gated. The studio is read
   only without the right to arrange the post. When that right goes while it is open (the live topic is revoked, or a 403
   after it was allowed), a banner says the shift ended, unsaved work is kept in the browser's storage, and the studio asks
   for the rights every few seconds; when they return it opens up again and does the save it owes.
@@ -103,15 +105,15 @@
     @if (_session?.Design?.Published is null)
     {
       <button type="button" class="mud-button-root mud-button-outlined mud-button-primary mud-button-small"
-              disabled="@(_session?.Design is null || _session.Busy || !_session.CanPublish)" title="@PublishHint"
+              disabled="@(_session?.Design is null || _session.Busy || !_session.CanPublishNow)" title="@PublishHint"
               @onclick="() => _session!.PublishAsync()">Publish</button>
     }
     else
     {
       <button type="button" class="mud-button-root mud-button-outlined mud-button-small"
-              disabled="@(_session.Busy || !_session.CanPublish)" title="@PublishHint" @onclick="() => _session!.PublishAsync()">Publish again</button>
+              disabled="@(_session.Busy || !_session.CanPublishNow)" title="@PublishHint" @onclick="() => _session!.PublishAsync()">Publish again</button>
       <button type="button" class="mud-button-root mud-button-text mud-button-small"
-              disabled="@(_session.Busy || !_session.CanPublish)" title="@PublishHint" @onclick="() => _session!.UnpublishAsync()">Unpublish</button>
+              disabled="@(_session.Busy || !_session.CanPublish)" title="@RightHint" @onclick="() => _session!.UnpublishAsync()">Unpublish</button>
     }
     <button type="button" class="mud-button-root mud-button-text mud-button-small" title="The panes back where they started"
             disabled="@(_dock is null)" @onclick="ResetLayoutAsync">Reset layout</button>
@@ -148,9 +150,23 @@
         }
       </span>
       <span class="cd-muted">Set by the newsroom workflow.</span>
+      @if (_session.Publishing is { ProjectId: { } projectId, ProjectState: { } state } workflow)
+      {
+        <span>
+          <span class="cd-muted">NewsRoom project:</span>
+          <a href="newsroom/projects/@projectId"><span class="cd-tag @(workflow.Allows ? "cd-tag--ok" : "")">@StudioText.ProjectState(state)</span></a>
+        </span>
+      }
     </div>
   }
 
+  @if (_session is { CanPublish: true, Publishing: { Allows: false, Message: { Length: > 0 } waits } })
+  {
+    <div class="cd-banner" role="status">
+      <strong>Publishing waits</strong>
+      <span>@waits</span>
+    </div>
+  }
   @if (_session is { ShiftEnded: true })
   {
     <div class="cd-banner cd-banner--warn" role="alert">
@@ -220,7 +236,9 @@
 
   private string Title => _session?.Workspace?.Post.Title is { Length: > 0 } title ? title : $"Post {PostId}";
 
-  private string? PublishHint => _session is { CanPublish: false, Rights: not null } ? "You may not publish this post's design now" : null;
+  private string? RightHint => _session is { CanPublish: false, Rights: not null } ? "You may not publish this post's design now" : null;
+
+  private string? PublishHint => RightHint ?? (_session?.Publishing is { Allows: false } workflow ? workflow.Message : null);
 
   private static string Category(WorkspaceCategory category)
   {

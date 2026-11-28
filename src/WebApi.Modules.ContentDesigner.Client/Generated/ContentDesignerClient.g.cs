@@ -106,7 +106,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Publish the draft once every check passes (409 lists the errors); pins the content revisions it was checked against.
+        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
@@ -1090,7 +1090,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Publish the draft once every check passes (409 lists the errors); pins the content revisions it was checked against.
+        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
@@ -4309,6 +4309,9 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         [System.Text.Json.Serialization.JsonPropertyName("unitId")]
         public System.Guid? UnitId { get; set; } = default!;
 
+        [System.Text.Json.Serialization.JsonPropertyName("publishing")]
+        public PublishGateDto? Publishing { get; set; } = default!;
+
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 
         [System.Text.Json.Serialization.JsonExtensionData]
@@ -4440,6 +4443,37 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
         [System.Text.Json.Serialization.JsonPropertyName("publishedAt")]
         [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
         public System.DateTimeOffset PublishedAt { get; set; } = default!;
+
+        private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties ?? (_additionalProperties = new System.Collections.Generic.Dictionary<string, object>()); }
+            set { _additionalProperties = value; }
+        }
+
+    }
+
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "14.8.0.0 (NJsonSchema v11.6.2.0 (Newtonsoft.Json v13.0.0.0))")]
+    public partial class PublishGateDto
+    {
+
+        [System.Text.Json.Serialization.JsonPropertyName("allows")]
+        public bool Allows { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("status")]
+        [System.ComponentModel.DataAnnotations.Required(AllowEmptyStrings = true)]
+        public string Status { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("projectId")]
+        public System.Guid? ProjectId { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("projectState")]
+        public string? ProjectState { get; set; } = default!;
+
+        [System.Text.Json.Serialization.JsonPropertyName("message")]
+        public string? Message { get; set; } = default!;
 
         private System.Collections.Generic.IDictionary<string, object>? _additionalProperties;
 

@@ -142,7 +142,7 @@ public class NewsroomHandlersTests
 
         _designs.FirstOrDefaultAsync(Arg.Any<ISpecification<PostDesign>>(), Arg.Any<CancellationToken>()).Returns(Design());
         (await new DeleteDesignHandler(_designs, rights).Handle(new DeleteDesignCommand(7, 0), Ct)).Status.ShouldBe(ResultStatus.Forbidden);
-        (await new PublishDesignHandler(_designs, _content, Bench.Workbench(), access, rights, _clock).Handle(new PublishDesignCommand(7, 0), Ct))
+        (await new PublishDesignHandler(_designs, _content, Bench.Workbench(), access, rights, Bench.Gate(), _clock).Handle(new PublishDesignCommand(7, 0), Ct))
             .Status.ShouldBe(ResultStatus.Forbidden);
         await _designs.DidNotReceiveWithAnyArgs().DeleteAsync(default!, Ct);
         await _designs.DidNotReceiveWithAnyArgs().AddAsync(default!, Ct);
@@ -159,7 +159,7 @@ public class NewsroomHandlersTests
         var access = Bench.Grants((Arrange, $"unit:{Desk:N}"));
 
         var workspace = (await new GetWorkspaceHandler(Substitute.For<IReadRepository<PostDesign>>(), _content, Bench.Workbench(), organization,
-            Bench.Rights(access, _content)).Handle(new GetWorkspaceQuery(7), Ct)).Value;
+            Bench.Rights(access, _content), Bench.Gate()).Handle(new GetWorkspaceQuery(7), Ct)).Value;
 
         workspace.Post.UnitNameEn.ShouldBe("Sports desk");
         workspace.Post.UrlPrefix.ShouldBe("news");
@@ -181,7 +181,7 @@ public class NewsroomHandlersTests
         var access = Bench.AllowEverything(Substitute.For<IAccessScopes>());
 
         var workspace = (await new GetWorkspaceHandler(Substitute.For<IReadRepository<PostDesign>>(), _content, Bench.Workbench(), Bench.Organization(),
-            Bench.Rights(access, _content)).Handle(new GetWorkspaceQuery(7), Ct)).Value;
+            Bench.Rights(access, _content), Bench.Gate()).Handle(new GetWorkspaceQuery(7), Ct)).Value;
 
         workspace.Post.Categories.ShouldNotBeNull().Select(c => c.Id).ShouldBe(["cat-sport", "cat-local"]);
         workspace.Post.UnitId.ShouldBe(Desk);

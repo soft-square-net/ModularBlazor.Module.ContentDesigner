@@ -22,6 +22,7 @@ public static class ServiceConfigs
         services.AddScoped(sp => new PageRenderer(sp, sp.GetRequiredService<ILoggerFactory>()));
         services.AddScoped<DesignWorkbench>();
         services.AddScoped<DesignRights>();
+        services.AddScoped<PublishGate>();
 
         services.AddMediatorSourceGen();
         return services;
