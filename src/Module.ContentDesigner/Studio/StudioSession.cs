@@ -92,6 +92,12 @@ public sealed partial class StudioSession
     /// <summary>The Problems panel: the last check's findings with Content's refusals joined in.</summary>
     public IReadOnlyList<StudioProblem> Problems => ContentRefusals.Merge(Report?.Problems?.ToList() ?? [], Refusals.All, Document);
 
+    /// <summary>The problems about one part (a selection id), in any view.</summary>
+    public IReadOnlyList<StudioProblem> ProblemsOf(string id) => [.. Problems.Where(p => ProblemTargets.IsAbout(p, id, Views, Document))];
+
+    /// <summary>Raised when a part with problems is selected: the studio brings the Problems panel forward.</summary>
+    public event Action? ProblemsWanted;
+
     private string? NodeOf(string contentId) => Workspace?.Contents.FirstOrDefault(c => c.ContentId == contentId)?.NodeId;
 
     /// <summary>Content ids that changed in the last reload, for the canvas and the tray to flash.</summary>
@@ -277,6 +283,7 @@ public sealed partial class StudioSession
         if (Selected == id) return;
         Selected = id;
         Notify();
+        if (id is not null && ProblemsOf(id).Count > 0) ProblemsWanted?.Invoke();
     }
 
     public void SetShowHidden(bool show)
