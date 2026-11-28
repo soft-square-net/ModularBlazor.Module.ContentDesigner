@@ -5,7 +5,7 @@ using soft.square.net.WebApi.Modules.ContentDesigner.UseCases.Ports;
 
 namespace soft.square.net.WebApi.Modules.ContentDesigner.UnitTests.UseCases;
 
-/// <summary>The newsroom workflow's say on publishing: only a project InProduction or ReadyForDesk lets a design out.</summary>
+/// <summary>The newsroom workflow's say on publishing: only a project InProduction, ReadyForDesk or Published lets a design out.</summary>
 public class PublishGateTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -27,14 +27,15 @@ public class PublishGateTests
     private static PostProjects Project(params string[] states) =>
         PostProjects.Known([.. states.Select(s => new NewsRoomProject(Guid.NewGuid(), s))]);
 
-    private async Task<Ardalis.Result.Result<PostDesignDto>> PublishAsync(PostProjects newsRoom) =>
+    private async Task<Ardalis.Result.Result<PostDesignDto>> PublishAsync(PostProjects newsRoom, int version = 0) =>
         await new PublishDesignHandler(_designs, _content, Bench.Workbench(), _access, Bench.Rights(_access, _content), Bench.Gate(newsRoom), _clock)
-            .Handle(new PublishDesignCommand(7, 0), Ct);
+            .Handle(new PublishDesignCommand(7, version), Ct);
 
     [Theory]
     [InlineData("InProduction")]
     [InlineData("ReadyForDesk")]
-    public async Task AProjectInProductionOrReadyForTheDeskLetsTheDesignOut(string state)
+    [InlineData("Published")]
+    public async Task AProjectAtWorkOrPublishedLetsTheDesignOut(string state)
     {
         var result = await PublishAsync(Project(state));
 
@@ -46,7 +47,6 @@ public class PublishGateTests
     [InlineData("Approved")]
     [InlineData("NeedsModeration")]
     [InlineData("Scheduled")]
-    [InlineData("Published")]
     [InlineData("Killed")]
     public async Task AProjectInAnyOtherStateDoesNot(string state)
     {
@@ -55,6 +55,40 @@ public class PublishGateTests
         result.Status.ShouldBe(ResultStatus.Conflict);
         result.Errors.Single().ShouldContain(state);
         await _designs.DidNotReceiveWithAnyArgs().UpdateAsync(default!, Ct);
+    }
+
+    [Fact]
+    public async Task ADesignFixOfAPublishedProjectIsPublishedAgain()
+    {
+        var first = await PublishAsync(Project("ReadyForDesk"));
+        first.IsSuccess.ShouldBeTrue(string.Join("; ", first.Errors));
+
+        var again = await PublishAsync(Project("Published"), first.Value.Version);
+
+        again.IsSuccess.ShouldBeTrue(string.Join("; ", again.Errors));
+        again.Value.Published.ShouldNotBeNull().DesignVersion.ShouldBe(2);
+    }
+
+    /// <summary>States newest first, as NewsRoom lists them; <paramref name="shown"/> is the project the gate answers with.</summary>
+    [Theory]
+    [InlineData(new[] { "Published", "Killed" }, true, 0)]
+    [InlineData(new[] { "Published", "NeedsModeration" }, true, 0)]
+    [InlineData(new[] { "Published", "InProduction" }, true, 1)] // the one at work is the one to follow
+    [InlineData(new[] { "Killed", "ReadyForDesk" }, true, 1)]
+    [InlineData(new[] { "Killed", "Published" }, false, 0)]
+    [InlineData(new[] { "NeedsModeration", "Published" }, false, 0)]
+    [InlineData(new[] { "Scheduled", "Published" }, false, 0)]
+    [InlineData(new[] { "Approved", "Killed", "Published" }, false, 0)]
+    public async Task OfSeveralProjectsAnOlderPublishedOneDoesNotOverruleTheNewest(string[] states, bool allows, int shown)
+    {
+        var found = Project(states);
+
+        var gate = await Bench.Gate(found).EvaluateAsync(7, Ct);
+
+        gate.Allows.ShouldBe(allows);
+        gate.Status.ShouldBe(allows ? PublishGateStatuses.Open : PublishGateStatuses.Closed);
+        gate.ProjectId.ShouldBe(found.Projects[shown].Id);
+        gate.ProjectState.ShouldBe(states[shown]);
     }
 
     [Fact]

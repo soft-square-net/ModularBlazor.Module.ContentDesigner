@@ -129,16 +129,21 @@ to a post and are checked as before. A refusal is 403 with the reason.
 
 Where [NewsRoom](https://github.com/soft-square-net/ModularBlazor.Module.NewsRoom) runs, a post made from a proposal has a
 **post project**. Its design can be published (or published again) only while the project is **InProduction** or
-**ReadyForDesk**. NewsRoom is optional: a post without a project, and a deployment without NewsRoom, publish as before.
+**ReadyForDesk**, or once it is **Published**, so a design fix can be published again. NewsRoom is optional: a post without a project, and a deployment without NewsRoom, publish as before.
 Taking a design down is never gated, and nothing else (arranging, saving, checks) is either.
 
 | What NewsRoom says | Publish |
 | --- | --- |
 | Not installed (its routes answer 404), or the post has no project | as before |
-| The project is InProduction or ReadyForDesk | as before |
-| Any other state, Scheduled and Published included | 409 naming the state |
+| The project is InProduction, ReadyForDesk or Published | as before |
+| Any other state, Scheduled included | 409 naming the state |
 | No answer: unreachable, an error, or slower than 5 s | 503, try again |
 | It cannot be told whether the post has a project (see below) | 503 saying what to set up |
+
+NewsRoom normally gives a post one project. Of several, one InProduction or ReadyForDesk opens publishing, while a
+Published one does so only when it is the newest: Published is final, so an older one would otherwise overrule every
+later project. When none opens it, the refusal and the studio name the newest. Publishing a design again changes only
+the design (a new published version, pinning the contents as they are now), not the post or its project.
 
 The last two refuse on purpose: letting a publish through would skip the workflow for the very posts it controls.
 

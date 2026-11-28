@@ -106,7 +106,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.
+        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction, ReadyForDesk or Published, 503 when that cannot be told; pins the content revisions it was checked against.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
@@ -1090,7 +1090,7 @@ namespace soft.square.net.WebApi.Modules.ContentDesigner.Client
 
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>
-        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction or ReadyForDesk, 503 when that cannot be told; pins the content revisions it was checked against.
+        /// Publish the draft once every check passes (409 lists the errors); 409 while the post's NewsRoom project is not InProduction, ReadyForDesk or Published, 503 when that cannot be told; pins the content revisions it was checked against.
         /// </summary>
         /// <returns>OK</returns>
         /// <exception cref="ContentDesignerApiException">A server side error occurred.</exception>
