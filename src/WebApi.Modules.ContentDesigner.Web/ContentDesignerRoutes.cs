@@ -32,6 +32,7 @@ public sealed class ContentDesignerRoutes : ICarterModule
         Designs.Library.Map(designs);
         Designs.LibraryItem.Map(designs);
         Designs.AttachContent.Map(designs);
+        Designs.EditText.Map(designs);
         Designs.Kinds.Map(designs);
         Designs.Units.Map(designs);
         Designs.Rights.Map(designs);

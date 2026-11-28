@@ -27,16 +27,30 @@ public static class RenderMapping
     /// The page the canvas shows for a view: the web views as one responsive page (the device frame's width picks the
     /// breakpoint through the editorial pack's container queries), AMP as its own arrangement with the web renderers.
     /// </summary>
-    public static PageModel Page(RenderDocument document, RenderDesign design, string view) =>
-        Decorate(Views.IsWeb(view) ? ResponsiveMerge.Merge(document, design) : ResponsiveMerge.Single(document, design.Amp));
+    /// <param name="editable">The parts the caller may edit in place now (null: none, the studio is read only).</param>
+    public static PageModel Page(RenderDocument document, RenderDesign design, string view, Func<string, bool>? editable = null) =>
+        Decorate(Views.IsWeb(view) ? ResponsiveMerge.Merge(document, design) : ResponsiveMerge.Single(document, design.Amp), editable);
 
     /// <summary>
     /// Adds MudCanvas's attributes to every node, so a click selects it: <c>data-block-id</c> (the selection id:
     /// <c>region:{id}</c>, <c>prop:{key}</c>, <c>content:{id}</c>), <c>data-block-type</c> and <c>data-block-label</c> (the chip),
-    /// <c>data-container</c> on regions. Blocks that come through <c>items</c> name their content too.
+    /// <c>data-container</c> on regions. Blocks that come through <c>items</c> name their content too. A part whose element is
+    /// one plain text value (<see cref="TextParts"/>) that <paramref name="editable"/> allows gets <c>data-has-text</c>, so a
+    /// double-click edits it in place, and <c>data-edit-key</c>, the value's key.
     /// </summary>
-    public static PageModel Decorate(PageModel page)
+    public static PageModel Decorate(PageModel page, Func<string, bool>? editable = null)
     {
+        Dictionary<string, object> Editable(Dictionary<string, object> attributes)
+        {
+            var id = (string)attributes["data-block-id"];
+            if (editable is not null && editable(id) && TextParts.KeyOf(page.Document, id) is { } key)
+            {
+                attributes["data-has-text"] = "true";
+                attributes["data-edit-key"] = key;
+            }
+            return attributes;
+        }
+
         PageNode Node(PageNode node) => node switch
         {
             RegionNode region => region with
@@ -45,10 +59,10 @@ public static class RenderMapping
                     $"{region.Kind} · {region.Id}", container: true, empty: region.Children.Count == 0),
                 Children = [.. region.Children.Select(Node)]
             },
-            PropNode prop => prop with { Attributes = With(prop.Attributes, "prop:" + prop.Key, "value", prop.Key) },
+            PropNode prop => prop with { Attributes = Editable(With(prop.Attributes, "prop:" + prop.Key, "value", prop.Key)) },
             BlockNode block => block with
             {
-                Attributes = With(block.Attributes, "content:" + block.Block.Id, block.Block.FieldKey, Label(block.Block.FieldKey))
+                Attributes = Editable(With(block.Attributes, "content:" + block.Block.Id, block.Block.FieldKey, Label(block.Block.FieldKey)))
             },
             _ => node
         };

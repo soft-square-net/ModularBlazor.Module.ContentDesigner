@@ -155,3 +155,8 @@ body.mud-canvas-dragging .cd-palette { cursor: grabbing; }
   border-radius: 4px; background: var(--mud-palette-background); }
 .cd-library__add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 .cd-problems__only { display: inline-flex; align-items: center; gap: .25rem; }
+.cd-aside { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.cd-aside__text { flex: 1 1 16rem; min-width: 0; font: inherit; padding: .2rem .4rem; border: 1px solid var(--mud-palette-lines-default); border-radius: 4px; background: var(--mud-palette-surface); color: inherit; }
+.cd-canvas [data-has-text="true"] { cursor: text; }
+/* Editable text: a dotted underline on hover (outlines are the problem marks). */
+.cd-canvas [data-has-text="true"]:hover { text-decoration: underline dotted var(--mud-palette-primary); text-underline-offset: 3px; }

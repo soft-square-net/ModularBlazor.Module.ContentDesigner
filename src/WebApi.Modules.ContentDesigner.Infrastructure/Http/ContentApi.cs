@@ -31,7 +31,7 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
 
     private sealed record ContentDetailWire(Guid Id, string NodeId, string FieldKey, int FieldVersion, JsonElement Values, string? SectionId,
         string? AssigneeId, string Stage, int Revision, int? AcceptedRevision, DateTimeOffset UpdatedAt, DateTimeOffset? ArchivedAt,
-        Guid? UnitId = null);
+        Guid? UnitId = null, int Version = 0);
 
     private sealed record CategoryWire(string Id, string? Name, string? NameEn, string? NameAr);
 
@@ -94,7 +94,7 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
         if (!Guid.TryParse(contentId, out var id)) return null;
         var c = await Gateway.ReadAsync<ContentDetailWire>(Service, await gateway.SendAsync(Service, HttpMethod.Get, $"/api/content/contents/{id}", null, ct), ct);
         return c is null ? null : new LibraryContentDetail(new LibraryContent(c.Id.ToString(), c.NodeId, c.FieldKey, c.FieldVersion, c.Stage,
-            c.Revision, c.AcceptedRevision, c.SectionId, c.AssigneeId, c.UpdatedAt, c.ArchivedAt is not null, c.UnitId), c.Values);
+            c.Revision, c.AcceptedRevision, c.SectionId, c.AssigneeId, c.UpdatedAt, c.ArchivedAt is not null, c.UnitId), c.Values, c.Version);
     }
 
     public async Task AttachContentAsync(int postId, int postVersion, string contentId, int? index, bool required, CancellationToken ct)
@@ -102,6 +102,20 @@ public sealed class ContentApi(Gateway gateway) : IContentApi
         if (!Guid.TryParse(contentId, out var id)) throw new ExternalApiException(Service, 404, $"'{contentId}' is not a content id.");
         using var response = await gateway.SendAsync(Service, HttpMethod.Post, $"/api/content/posts/{postId}/contents",
             new { version = postVersion, contentId = id, index, required }, ct);
+        if (!response.IsSuccessStatusCode) throw await Gateway.FailureAsync(Service, response, ct);
+    }
+
+    public async Task EditContentAsync(string contentId, int version, JsonElement values, CancellationToken ct)
+    {
+        if (!Guid.TryParse(contentId, out var id)) throw new ExternalApiException(Service, 404, $"'{contentId}' is not a content id.");
+        using var response = await gateway.SendAsync(Service, HttpMethod.Put, $"/api/content/contents/{id}", new { version, values }, ct);
+        if (!response.IsSuccessStatusCode) throw await Gateway.FailureAsync(Service, response, ct);
+    }
+
+    public async Task SetPostRootAsync(int postId, int version, int fieldVersion, JsonElement content, JsonElement style, CancellationToken ct)
+    {
+        using var response = await gateway.SendAsync(Service, HttpMethod.Put, $"/api/content/posts/{postId}/root",
+            new { version, fieldVersion, content, style }, ct);
         if (!response.IsSuccessStatusCode) throw await Gateway.FailureAsync(Service, response, ct);
     }
 
