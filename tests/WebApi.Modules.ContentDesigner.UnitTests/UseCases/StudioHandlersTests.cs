@@ -74,6 +74,29 @@ public class StudioHandlersTests
         problems.HasErrors().ShouldBeTrue();
     }
 
+    /// <summary>DynamicFields' warnings show as warnings: they never make the design invalid.</summary>
+    [Fact]
+    public async Task AFieldsWarningIsAWarning()
+    {
+        var fields = Bench.Fields(issues: [new ContentIssue("/content/headline", "Consider a shorter headline.", Warning: true)]);
+
+        var problems = await Bench.Workbench(fields).CheckAsync(Samples.Design(), 1, Samples.Post(), null, null, Ct);
+
+        var found = problems.Where(p => p.Message == "Consider a shorter headline.").ShouldHaveSingleItem();
+        found.Severity.ShouldBe(ProblemSeverity.Warning);
+    }
+
+    /// <summary>
+    /// The style tokens, written out. DynamicFields' StyleVocabularyTests hold the same lines; a change here needs one
+    /// there and in MudTail's _style-tokens.scss.
+    /// </summary>
+    [Fact]
+    public void TheStyleTokensAreTheSharedTable() =>
+        string.Join("; ", StyleTokens.Values.OrderBy(v => v.Key, StringComparer.Ordinal).Select(v => $"{v.Key}={string.Join(",", v.Value)}"))
+            .ShouldBe("align=start,center,end; aspect=auto,1-1,4-3,3-2,16-9,21-9,3-4,9-16; columns=1,2,3,4,5,6,12; "
+                + "layout=standard,wide,full; level=h1,h2,h3,h4,h5,h6; size=sm,md,lg,xl; spacing=none,sm,md,lg,xl; "
+                + "tone=default,muted,accent,inverse; width=content,wide,full,half,third");
+
     [Fact]
     public async Task APostWithoutADesignOpensWithNone()
     {

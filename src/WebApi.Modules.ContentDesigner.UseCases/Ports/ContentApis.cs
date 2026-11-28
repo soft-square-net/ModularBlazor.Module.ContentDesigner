@@ -140,7 +140,7 @@ public sealed record FieldStyleInfo(string Key, IReadOnlyList<string> Values, bo
 public sealed record FieldVersionInfo(string Key, int Version, string SchemaType, IReadOnlyList<FieldValueInfo> Values, IReadOnlyList<FieldStyleInfo> Styles,
     string? Title = null);
 
-public sealed record ContentIssue(string Path, string Message);
+public sealed record ContentIssue(string Path, string Message, bool Warning = false);
 
 public sealed record JsonLdResult(string JsonLd, IReadOnlyList<ContentIssue> Skipped);
 
