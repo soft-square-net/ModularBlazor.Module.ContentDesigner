@@ -27,7 +27,7 @@ public sealed class FieldsApi(Gateway gateway, IMemoryCache cache, ITenantContex
 
     private sealed record IssueWire(string Path, string Message);
 
-    private sealed record ReportWire(bool Valid, List<IssueWire>? Issues);
+    private sealed record ReportWire(bool Valid, List<IssueWire>? Issues, List<IssueWire>? Warnings);
 
     private sealed record JsonLdWire(JsonElement JsonLd, List<IssueWire>? Skipped);
 
@@ -64,7 +64,12 @@ public sealed class FieldsApi(Gateway gateway, IMemoryCache cache, ITenantContex
         using var response = await gateway.SendAsync(Service, HttpMethod.Post, "/api/dynamicfields/content/validate", new { root }, ct);
         if (!response.IsSuccessStatusCode) throw await Gateway.FailureAsync(Service, response, ct);
         var report = await response.Content.ReadFromJsonAsync<ReportWire>(Gateway.Json, ct);
-        return [.. (report?.Issues ?? []).Select(i => new ContentIssue(i.Path, i.Message))];
+        // DynamicFields sends errors and advice apart; one list here, each marked (an older DynamicFields sends no warnings).
+        return
+        [
+            .. (report?.Issues ?? []).Select(i => new ContentIssue(i.Path, i.Message)),
+            .. (report?.Warnings ?? []).Select(i => new ContentIssue(i.Path, i.Message, Warning: true))
+        ];
     }
 
     public async Task<JsonLdResult?> BuildJsonLdAsync(JsonNode root, string? url, string? language, IReadOnlyDictionary<string, RenderAsset>? assets, CancellationToken ct)

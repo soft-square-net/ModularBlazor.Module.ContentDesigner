@@ -122,7 +122,8 @@ public sealed class DesignWorkbench(
             issues = [.. issues.Where(i => i.Path != "/field")];
         }
         foreach (var issue in issues)
-            problems.Add(new(null, ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message, PostDocuments.NodeAt(post.Document, issue.Path)));
+            problems.Add(new(null, issue.Warning ? ProblemSeverity.Warning : ProblemSeverity.Error, Codes.Content, issue.Path, issue.Message,
+                PostDocuments.NodeAt(post.Document, issue.Path)));
 
         var jsonLd = await fields.BuildJsonLdAsync(tree, JsonLdUrl(post.Permalink), culture, Assets(post.Document, postFields), ct);
         if (jsonLd is null)
